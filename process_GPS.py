@@ -7,6 +7,7 @@ import re
 import math
 import time
 import pandas as pd
+from pandas.tseries.offsets import *
 
 def euclidean_dist(x1, y1, x2, y2):
     """Calculate Euclidean distance between two points supplied as lat, long
@@ -106,7 +107,11 @@ def match_to_points(points_file, outerdir, result_dir, distance):
 
 def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
                       distance):
-    """Calculate the density of animals within a given distance of points.
+    """Calculate the density of animals within a given distance of points. For
+    each point, first find movement records collected near that point. Then
+    filter records: what herds were there each day. Retrieve number of animals
+    (of each type) that were there each day. Then summarize number of each
+    animal type by month by averaging daily records.
     
     Distance must be given in km. Points must be given in geographic
     coordinates and must be near the equator."""
@@ -152,8 +157,6 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
                 one_day = match.loc[match['Date'] == date]  # for each day where a herd was recorded nearby
                 for unit in pd.unique(one_day.unit_no.ravel()):  # for each unit recorded in that day
                     one_unit = one_day.loc[one_day['unit_no'] == unit]
-                    # assert len(pd.unique(one_unit.abbrev.ravel())) == 1  # there had better be only one abbreviation per unit
-                    # assert len(pd.unique(one_unit.rot.ravel())) == 1
                     for abb in pd.unique(one_unit.abbrev.ravel()):
                         rotation = str(pd.unique(one_unit.rot.ravel())[0])
                         record1 = metadata.loc[metadata['Abbrv'] == abb]
@@ -167,7 +170,7 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
                             record = record3
                         assert len(record) <= 1
                         if len(record) > 0:
-                            herd_dict['date'].append(date)  # TODO to string?
+                            herd_dict['date'].append(date)
                             herd_dict['unit'].append(unit)
                             herd_dict['Bulls'].append(record.iloc[0].Bulls)
                             herd_dict['Cows'].append(record.iloc[0].Cows)
@@ -187,11 +190,49 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
             matched_df = pd.concat(df_list)
             filename = 'herds_%s_%dkm.csv' % (point_name, distance)
             matched_df.to_csv(os.path.join(result_dir, filename))
-
-# find records collected near that point
-# filter records: what herds were there each day
-# retrieve # animals (of each type) there each day
-# summarize
+            
+            # summarize number of each animal type by month
+            df = matched_df
+            df = df.where((pd.notnull(df)), None)
+            df['date'] = pd.to_datetime(df['date'], format='%Y-%m-%d')
+            df = df.sort(['date'])
+            first = df.iloc[0].date
+            start = pd.datetime(first.year, first.month, 1)
+            # if the first record in the first month was from the first 10 days in the
+            # month, we include that month in our summary
+            if first.day > 10:
+                start = start + DateOffset(months=1)
+            last = df.iloc[-1].date
+            end = pd.datetime(last.year, last.month, 1)  # end is INCLUSIVE
+            if last.day < 20:
+                end = end - DateOffset(months=1)   
+            df_i = df.set_index('date')
+            ave_dict = {'month': [],
+                        'year': [],
+                        'Bulls': [],
+                        'Calves': [],
+                        'Cows': [],
+                        'Heifers': [],
+                        'Steers': [],
+                        'Weaners': [],
+                        'steer/heifer': [],
+            }
+            time = start
+            while time <= end:
+                records = df_i[((df_i.index.month == time.month) & (df_i.index.year == time.year))]
+                ave_dict['month'].append(time.month)
+                ave_dict['year'].append(time.year)
+                ave_dict['Bulls'].append(records[['Bulls']].mean()[0])
+                ave_dict['Calves'].append(records[['Calves']].mean()[0])
+                ave_dict['Cows'].append(records[['Cows']].mean()[0])
+                ave_dict['Heifers'].append(records[['Heifers']].mean()[0])
+                ave_dict['Steers'].append(records[['Steers']].mean()[0])
+                ave_dict['Weaners'].append(records[['Weaners']].mean()[0])
+                ave_dict['steer/heifer'].append(records[['steer/heifer']].mean()[0])
+                time = time + DateOffset(months=1)
+            ave_df = pd.DataFrame(ave_dict)
+            filename = 'average_animals_%s_%dkm.csv' % (point_name, distance)
+            ave_df.to_csv(os.path.join(result_dir, filename))
 
 if __name__ == "__main__":
     outerdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data'
