@@ -198,8 +198,8 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
             df = df.sort(['date'])
             first = df.iloc[0].date
             start = pd.datetime(first.year, first.month, 1)
-            # if the first record in the first month was from the first 10 days in the
-            # month, we include that month in our summary
+            # if the first record in the first month was from the first 10 days
+            # in the month, we include that month in our summary
             if first.day > 10:
                 start = start + DateOffset(months=1)
             last = df.iloc[-1].date
@@ -219,7 +219,8 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
             }
             time = start
             while time <= end:
-                records = df_i[((df_i.index.month == time.month) & (df_i.index.year == time.year))]
+                records = df_i[((df_i.index.month == time.month) &
+                                (df_i.index.year == time.year))]
                 ave_dict['month'].append(time.month)
                 ave_dict['year'].append(time.year)
                 ave_dict['Bulls'].append(records[['Bulls']].mean()[0])
@@ -228,7 +229,8 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
                 ave_dict['Heifers'].append(records[['Heifers']].mean()[0])
                 ave_dict['Steers'].append(records[['Steers']].mean()[0])
                 ave_dict['Weaners'].append(records[['Weaners']].mean()[0])
-                ave_dict['steer/heifer'].append(records[['steer/heifer']].mean()[0])
+                ave_dict['steer/heifer'].append(records[[
+                                                    'steer/heifer']].mean()[0])
                 time = time + DateOffset(months=1)
             ave_df = pd.DataFrame(ave_dict)
             filename = 'average_animals_%s_%dkm.csv' % (point_name, distance)
