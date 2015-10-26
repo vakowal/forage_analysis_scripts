@@ -132,12 +132,18 @@ def summarize_density(points_file, gps_metadata_file, outerdir, result_dir,
         GPS_data['Date'] = pd.to_datetime(GPS_data['Date'],
                                               format='%Y-%m-%d')
     for v_row in xrange(len(points_data)):
-        if points_data.iloc[v_row].POINT_X is None or \
-                                points_data.iloc[v_row].POINT_Y is None:
+        # if points_data.iloc[v_row].POINT_X is None or \
+                                # points_data.iloc[v_row].POINT_Y is None:
+        if points_data.iloc[v_row].Long is None or \
+                                points_data.iloc[v_row].Lat is None:
             continue
-        point_name = points_data.iloc[v_row].Name
-        x1 = float(points_data.iloc[v_row].POINT_X)
-        y1 = float(points_data.iloc[v_row].POINT_Y)
+        # point_name = points_data.iloc[v_row].Name
+        # x1 = float(points_data.iloc[v_row].POINT_X)
+        # y1 = float(points_data.iloc[v_row].POINT_Y)
+        point_name = '%s-%s' % (points_data.iloc[v_row].Property,
+                                points_data.iloc[v_row].Transect)
+        x1 = float(points_data.iloc[v_row].Long)
+        y1 = float(points_data.iloc[v_row].Lat)
         
         match = find_matched_records(x1, y1, GPS_data, distance)
         if len(match) > 0:
@@ -242,6 +248,7 @@ if __name__ == "__main__":
     result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
     weather_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
     gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
+    veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched with veg transects"
     distance = 2.
-    summarize_density(weather_file, gps_metadata_file, outerdir, result_dir,
+    summarize_density(veg_file, gps_metadata_file, outerdir, veg_result_dir,
                       distance)
