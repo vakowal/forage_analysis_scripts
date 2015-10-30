@@ -102,7 +102,7 @@ def one_step(FParam, DOY, herd, available_forage, prop_legume, supp_available,
 
 out_name = os.path.join(outdir, 'summary.csv')
 with open(out_name, 'wb') as out:
-    writer = csv.writer(out, delimiter = ',')
+    writer = csv.writer(out, delimiter=',')
     header = ['supp_level', 'max_intake', 'intake_forage', 'intake_supp',
               'CPI_forage', 'ME_intake_total', 'daily_gain', 'step']
     writer.writerow(header)              

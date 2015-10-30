@@ -17,7 +17,7 @@ def run_simulations():
     century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
     fix_file = 'drytrpfi.100'
     graz_file = os.path.join(century_dir, "graz.100")
-    site_list = ['Kamok', 'Loidien', 'Research', 'Rongai']
+    site_list = ['Research', 'Kamok', 'Loidien', 'Rongai']
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input"
     outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test"
     prop_legume = 0
@@ -99,25 +99,19 @@ def run_simulations():
             os.remove(os.path.join(century_dir, file))
         
         grass_list = [grass]
+        results_dict = {'year': [], 'month': []}
         herbivore_input = (pandas.read_csv(herb_class_weights).to_dict(
                            orient='records'))
         herbivore_list = []
         for h_class in herbivore_input:
-            herd = forage.HerbivoreClass(FParam, breed,
-                                         h_class['weight'],
-                                         h_class['sex'], h_class['age'],
-                                         h_class['stocking_density'],
-                                         h_class['label'], Wbirth=24)
-            herd.update(FParam, 0, 0)
-            herbivore_list.append(herd)
-        results_dict = {'year': [], 'month': []}
-        for h_class in herbivore_list:
-            results_dict[h_class.label + '_gain_kg'] = []
+            results_dict[h_class['label'] + '_gain_kg'] = []
+            results_dict[h_class['label'] + '_offtake'] = []
         results_dict['milk_prod_kg'] = []
         for grass in grass_list:
             results_dict[grass['label'] + '_green_kgha'] = []
             results_dict[grass['label'] + '_dead_kgha'] = []
-        results_dict['percent_consumed'] = []
+        results_dict['total_offtake'] = []
+        results_dict['stocking_density'] = []
         try:
             for row in xrange(len(sd_df)):
                 herbivore_list = []
@@ -130,12 +124,9 @@ def run_simulations():
                     herd.update(FParam, 0, 0)
                     herbivore_list.append(herd)
                 for h_class in herbivore_list:
-                    density = sd_df.iloc[row][h_class.label]
-                    if density == 0:
-                        herbivore_list.remove(h_class)
-                    else:
-                        h_class.stocking_density = density
+                    h_class.stocking_density  = sd_df.iloc[row][h_class.label]
                 total_SD = forage.calc_total_stocking_density(herbivore_list)
+                results_dict['stocking_density'].append(total_SD)
                 siteinfo = forage.SiteInfo(total_SD, steepness, latitude)
                 month = sd_df.iloc[row].month
                 year = sd_df.iloc[row].year
@@ -149,12 +140,12 @@ def run_simulations():
                 grass['prev_d_gm2'] = grass['dead_gm2']
                 grass['green_gm2'] = outputs.loc[target_month, 'aglivc']
                 grass['dead_gm2'] = outputs.loc[target_month, 'stdedc']
-                grass['cprotein_green'] = (outputs.loc[target_month,
-                                           'aglive1'] / outputs.loc[
-                                                       target_month, 'aglivc'])
-                grass['cprotein_dead'] = (outputs.loc[target_month,
-                                          'stdede1'] / outputs.loc[
-                                                       target_month, 'stdedc'])
+                # grass['cprotein_green'] = (outputs.loc[target_month,
+                                           # 'aglive1'] / outputs.loc[
+                                                       # target_month, 'aglivc'])
+                # grass['cprotein_dead'] = (outputs.loc[target_month,
+                                          # 'stdede1'] / outputs.loc[
+                                                       # target_month, 'stdedc'])
                 if row == 0:
                     available_forage = forage.calc_feed_types(grass_list)
                 else:
@@ -168,8 +159,8 @@ def run_simulations():
                                  '_kgha'].append(feed_type.biomass)
 
                 siteinfo.calc_distance_walked(FParam, available_forage)
-                for feed_type in available_forage:
-                    feed_type.calc_digestibility_from_protein()
+                # for feed_type in available_forage:
+                    # feed_type.calc_digestibility_from_protein()
                 total_biomass = forage.calc_total_biomass(available_forage)
                 # Initialize containers to track forage consumed across herbivore
                 # classes
@@ -186,11 +177,16 @@ def run_simulations():
                         ZF = 1. + (FParam.CR7 - herb_class.Z)
                     else:
                         ZF = 1.
-
+                    if herb_class.stocking_density > 0:
+                        adj_forage = forage.calc_adj_availability(
+                                                   available_forage,
+                                                   herb_class.stocking_density)
+                    else:
+                        adj_forage = list(available_forage)
                     diet = forage.diet_selection_t2(ZF, prop_legume,
                                                     supp_available, supp,
                                                     max_intake, FParam,
-                                                    available_forage)
+                                                    adj_forage)
                     diet_interm = forage.calc_diet_intermediates(FParam, diet,
                                     supp, herb_class, siteinfo, prop_legume,
                                     DOY)
@@ -201,14 +197,13 @@ def run_simulations():
                         diet = forage.diet_selection_t2(ZF, prop_legume,
                                                         supp_available, supp,
                                                         reduced_max_intake, 
-                                                        FParam,
-                                                        available_forage)
-                        diet_interm = forage.calc_diet_intermediates(FParam, 
+                                                        FParam, adj_forage)
+                        diet_interm = forage.calc_diet_intermediates(FParam,
                                         diet,
                                         supp, herb_class, siteinfo,
                                         prop_legume, DOY)
-                    total_intake_step += (forage.convert_daily_to_step(diet.If) *
-                                          herb_class.stocking_density)
+                    total_intake_step += (forage.convert_daily_to_step(diet.If)
+                                          * herb_class.stocking_density)
                     if herb_class.sex == 'lac_female':
                         milk_production = forage.check_milk_production(FParam,
                                                                    diet_interm)
@@ -220,8 +215,14 @@ def run_simulations():
                     delta_W_step = forage.convert_daily_to_step(delta_W)
                     herb_class.update(FParam, delta_W_step,
                                       forage.find_days_per_step())
-                    results_dict[herb_class.label + '_gain_kg'].append(
+                    if herb_class.stocking_density > 0:
+                        results_dict[herb_class.label + '_gain_kg'].append(
                                                                   delta_W_step)
+                        results_dict[herb_class.label + '_offtake'].append(
+                                                                       diet.If)
+                    else:
+                        results_dict[herb_class.label + '_gain_kg'].append('NA')
+                        results_dict[herb_class.label + '_offtake'].append('NA')
                     if herb_class.sex == 'lac_female':
                         results_dict['milk_prod_kg'].append(milk_kg_day * 30.)
 
@@ -234,8 +235,7 @@ def run_simulations():
                     forage.sum_percent_consumed(total_consumed,
                                                 consumed_by_class)
 
-                results_dict['percent_consumed'].append(
-                                      float(total_intake_step) / total_biomass)
+                results_dict['total_offtake'].append(total_intake_step)
                 # send to CENTURY for this month's scheduled grazing event
                 date = year + float('%.2f' % (month / 12.))
                 schedule = os.path.join(century_dir, site + '.sch')
