@@ -263,6 +263,8 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                 for unit in pd.unique(one_day.unit_no.ravel()):  # for each unit recorded in that day
                     one_unit = one_day.loc[one_day['unit_no'] == unit]
                     for abb in pd.unique(one_unit.abbrev.ravel()):
+                        if pd.isnull(abb):
+                            abb = one_unit.iloc[0].suf[:-2]  # watch out for this, it is a hack
                         rotations = pd.unique(one_unit.rot.ravel())
                         if len(rotations) > 1:
                             import pdb; pdb.set_trace()
@@ -370,12 +372,51 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
     filename = 'missing_counts.csv'
     missing_counts_df.to_csv(os.path.join(result_dir, filename))
 
+def check_for_missing_records(GPS_datafile, metadata, result_dir):
+    """Check for records indicated by filenames of the GPS units records that
+    do not appear in the metadata file."""
+    
+    missing_records = {'abbreviation': [],
+                       'unit_no': [],
+                       'rotation': [],
+                       'year': [],
+                       }
+    GPS_data = pd.read_csv(GPS_datafile, na_values=None)
+    GPS_data['Date'] = pd.to_datetime(GPS_data['Date'],
+                                              format='%Y-%m-%d')
+    GPS_data['year'] = (pd.DatetimeIndex(GPS_data['Date'])).year
+    metadata = pd.read_table(gps_metadata_file, sep=',')
+    metadata = metadata.where((pd.notnull(metadata)), None)
+    metadata.Rotation = metadata.Rotation.astype(str)
+    metadata['Date'] = pd.to_datetime(metadata['Date'], format='%d.%m.%y')
+    GPS_data = GPS_data.drop_duplicates(['rot', 'year', 'abbrev', 'unit_no'])
+    for row in xrange(len(GPS_data)):
+        unit_no = GPS_data.iloc[row].unit_no
+        abbrev = GPS_data.iloc[row].abbrev
+        year = GPS_data.iloc[row].year
+        rot = GPS_data.iloc[row].rot
+        record1 = metadata.loc[metadata['Abbrv'] == abbrev]
+        record2 = record1.loc[record1['Unit_no'] == unit_no]
+        record3 = record2.loc[record2['Rotation'] == rot]
+        record4 = record3.loc[record3['Year'] == year]
+        if len(record4) == 0:
+            missing_records['abbreviation'].append(abbrev)
+            missing_records['unit_no'].append(unit_no)
+            missing_records['rotation'].append(rot)
+            missing_records['year'].append(year)
+                            
+    missing_records_df = pd.DataFrame(missing_records)
+    missing_records_df = missing_records_df.drop_duplicates()
+    filename = 'missing_records.csv'
+    missing_records_df.to_csv(os.path.join(result_dir, filename))
+    
 if __name__ == "__main__":
-    outerdir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data'
+    outerdir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/raw_data'
     # GPS_data = combine_GPS_files(outerdir)
     # GPS_data.to_csv(os.path.join(outerdir, "data_combined.csv"))
     # points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
-    result_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
+    # result_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
+    result_dir = outerdir
     weather_file = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
     gps_metadata_file = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
     # veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched with veg transects"
