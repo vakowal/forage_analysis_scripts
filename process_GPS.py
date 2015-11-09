@@ -39,10 +39,15 @@ def combine_GPS_files(outerdir):
         dir = os.path.join(outerdir, folder)
         files = [f for f in os.listdir(dir) if re.search('.csv$', f)]
         for file in files:
-            rot = str(re.search('rot(.+?)_', file).group(1))
+            rot = re.search('rot(.+?)_', file).group(1)
             suf = re.search('_(.+?).csv', file).group(1)
             abbrev = suf[:-2]
-            unit_no = suf[-2:]
+            if abbrev.isalpha():
+                unit_no = suf[-2:]
+            else:
+                abbrev = suf[:-3]
+                if abbrev.isalpha():
+                    unit_no = suf[-3:]
             filedir = os.path.join(dir, file)
             df = pd.read_table(filedir, sep=',')
             df = df.where((pd.notnull(df)), None)
@@ -154,7 +159,8 @@ def summarize_as_array(points_file, x_field, y_field, gps_metadata_file,
     """Summarize density of animals in a grid as rasters showing number of
     animals of one type within each grid cell during one month."""
     
-    metadata = pd.read_table(gps_metadata_file, sep=',')
+    metadata = pd.read_table(gps_metadata_file, sep=',', keep_default_na=False,
+                             na_values = [''])
     metadata = metadata.where((pd.notnull(metadata)), None)
     metadata.Rotation = metadata.Rotation.astype(str)
     metadata['Date'] = pd.to_datetime(metadata['Date'], format='%d.%m.%y')
@@ -180,10 +186,6 @@ def summarize_as_array(points_file, x_field, y_field, gps_metadata_file,
     for period in pd.unique(GPS_data.period.ravel()):
         one_month = GPS_data.loc[GPS_data['period'] == period]
         herd_idx = one_month.drop_duplicates(['abbrev', 'unit_no', 'rot'])
-        
-        
-        
-        
         # for each "point" in the points data
         # for p_row in xrange(len(points_data)/6):  # for now
             # x1 = float(points_data.iloc[p_row][x_field])
@@ -202,7 +204,7 @@ def summarize_as_array(points_file, x_field, y_field, gps_metadata_file,
     
                                               
 def summarize_density(points_file, x_field, y_field, gps_metadata_file,
-                      outerdir, result_dir, distance):
+                      GPS_datafile, outerdir, result_dir, distance):
     """Calculate the density of animals within a given distance of points. For
     each point, first find movement records collected near that point. Then
     filter records: what herds were there each day. Retrieve number of animals
@@ -217,25 +219,15 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                        'rotation': [],
                        'year': [],
                        }
+    missing_records_sites = []
     missing_counts = {'abbreviation': [],
                        'unit_no': [],
                        'rotation': [],
                        'year': [],
                        }
-    metadata = pd.read_table(gps_metadata_file, sep=',')
-    metadata = metadata.where((pd.notnull(metadata)), None)
-    metadata.Rotation = metadata.Rotation.astype(str)
-    metadata['Date'] = pd.to_datetime(metadata['Date'], format='%d.%m.%y')
+    missing_counts_sites = []
+    GPS_data, metadata = read_data(GPS_datafile, gps_metadata_file)
     points_data = read_point_data(points_file)
-    GPS_datafile = os.path.join(outerdir, "data_combined.csv")
-    if not os.path.exists(GPS_datafile):
-        GPS_data = combine_GPS_files(outerdir)
-        GPS_data.to_csv(GPS_datafile)
-    else:
-        GPS_data = pd.read_csv(GPS_datafile, na_values=None)
-        GPS_data.rot = GPS_data.rot.astype(str)
-        GPS_data['Date'] = pd.to_datetime(GPS_data['Date'],
-                                              format='%Y-%m-%d')
     for v_row in xrange(len(points_data)):
         if points_data.iloc[v_row][x_field] is None or \
                                 points_data.iloc[v_row][y_field] is None:
@@ -262,15 +254,15 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                 one_day = match.loc[match['Date'] == date]  # for each day where a herd was recorded nearby
                 for unit in pd.unique(one_day.unit_no.ravel()):  # for each unit recorded in that day
                     one_unit = one_day.loc[one_day['unit_no'] == unit]
-                    for abb in pd.unique(one_unit.abbrev.ravel()):
-                        if pd.isnull(abb):
-                            abb = one_unit.iloc[0].suf[:-2]  # watch out for this, it is a hack
+                    for abbrev in pd.unique(one_unit.abbrev.ravel()):
+                        # if pd.isnull(abb):
+                            # abb = one_unit.iloc[0].suf[:-2]  # watch out for this, it is a hack
                         rotations = pd.unique(one_unit.rot.ravel())
                         if len(rotations) > 1:
                             import pdb; pdb.set_trace()
                         else:
-                            rotation = str(rotations[0])
-                        record1 = metadata.loc[metadata['Abbrv'] == abb]
+                            rotation = rotations[0]
+                        record1 = metadata.loc[metadata['Abbrv'] == abbrev]
                         record2 = record1.loc[record1['Unit_no'] == unit]
                         record3 = record2.loc[record2['Rotation']\
                                                               == rotation]
@@ -282,16 +274,18 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                         if len(record) > 1:
                             import pdb; pdb.set_trace()
                         if len(record) == 0:
-                            missing_records['abbreviation'].append(abb)
+                            missing_records['abbreviation'].append(abbrev)
                             missing_records['unit_no'].append(unit)
                             missing_records['rotation'].append(rotation)
                             missing_records['year'].append(year)
+                            missing_records_sites.append(point_name)
                             continue
                         if record.iloc[0].Total is None:
-                            missing_counts['abbreviation'].append(abb)
+                            missing_counts['abbreviation'].append(abbrev)
                             missing_counts['unit_no'].append(unit)
                             missing_counts['rotation'].append(rotation)
                             missing_counts['year'].append(year)
+                            missing_counts_sites.append(point_name)
                             continue
                         herd_dict['date'].append(date)
                         herd_dict['unit'].append(unit)
@@ -361,7 +355,13 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
             ave_df = pd.DataFrame(ave_dict)
             filename = 'average_animals_%s_%dkm.csv' % (point_name, distance)
             ave_df.to_csv(os.path.join(result_dir, filename))
-            
+    missing_records_sites = set(missing_records_sites)
+    missing_counts_sites = set(missing_counts_sites)
+    print "These sites had missing records:" 
+    print missing_records_sites
+    print "These sites had missing counts:"
+    print missing_counts_sites
+    
     missing_records_df = pd.DataFrame(missing_records)
     missing_records_df = missing_records_df.drop_duplicates()
     filename = 'missing_records.csv'
@@ -372,24 +372,42 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
     filename = 'missing_counts.csv'
     missing_counts_df.to_csv(os.path.join(result_dir, filename))
 
-def check_for_missing_records(GPS_datafile, metadata, result_dir):
+def read_data(GPS_datafile, gps_metadata_file):
+    """Read data and metadata and coerce column types to match each other."""
+    
+    GPS_data = pd.read_csv(GPS_datafile, keep_default_na=False,
+                           na_values = [''])
+    GPS_data['Date'] = pd.to_datetime(GPS_data['Date'],
+                                              format='%Y-%m-%d')
+    GPS_data['year'] = (pd.DatetimeIndex(GPS_data['Date'])).year
+    metadata = pd.read_table(gps_metadata_file, sep=',', keep_default_na=False,
+                             na_values = [''])
+    metadata = metadata.where((pd.notnull(metadata)), None)
+    metadata['Date'] = pd.to_datetime(metadata['Date'], format='%d.%m.%y')
+    GPS_data = GPS_data.drop_duplicates(['rot', 'year', 'abbrev', 'unit_no'])
+    if GPS_data['unit_no'].dtype != metadata['Unit_no'].dtype:
+        GPS_data['unit_no'] = GPS_data['unit_no'].astype(
+                                                    metadata['Unit_no'].dtype)
+    if GPS_data['abbrev'].dtype != metadata['Abbrv'].dtype:
+        metadata['Abbrv'] = metadata['Abbrv'].astype(GPS_data['abbrev'].dtype)
+    if GPS_data['rot'].dtype != metadata['Rotation'].dtype:
+        metadata['Rotation'] = metadata['Rotation'].astype(
+                                                        GPS_data['rot'].dtype)
+    if GPS_data['year'].dtype != metadata['Year'].dtype:
+        metadata['Year'] = metadata['Year'].astype(GPS_data['year'].dtype)
+    return GPS_data, metadata
+
+def check_for_missing_records(GPS_datafile, gps_metadata_file, result_dir):
     """Check for records indicated by filenames of the GPS units records that
     do not appear in the metadata file."""
     
+    GPS_data, metadata = read_data(GPS_datafile, gps_metadata_file)
     missing_records = {'abbreviation': [],
                        'unit_no': [],
                        'rotation': [],
                        'year': [],
                        }
-    GPS_data = pd.read_csv(GPS_datafile, na_values=None)
-    GPS_data['Date'] = pd.to_datetime(GPS_data['Date'],
-                                              format='%Y-%m-%d')
-    GPS_data['year'] = (pd.DatetimeIndex(GPS_data['Date'])).year
-    metadata = pd.read_table(gps_metadata_file, sep=',')
-    metadata = metadata.where((pd.notnull(metadata)), None)
-    metadata.Rotation = metadata.Rotation.astype(str)
-    metadata['Date'] = pd.to_datetime(metadata['Date'], format='%d.%m.%y')
-    GPS_data = GPS_data.drop_duplicates(['rot', 'year', 'abbrev', 'unit_no'])
+    
     for row in xrange(len(GPS_data)):
         unit_no = GPS_data.iloc[row].unit_no
         abbrev = GPS_data.iloc[row].abbrev
@@ -426,4 +444,4 @@ if __name__ == "__main__":
     x_field = "POINT_X"
     y_field = "POINT_Y"
     summarize_density(weather_file, x_field, y_field, gps_metadata_file,
-                      outerdir, result_dir, distance)
+                      GPS_datafile, outerdir, result_dir, distance)
