@@ -395,6 +395,8 @@ def read_data(GPS_datafile, gps_metadata_file):
                                                         GPS_data['rot'].dtype)
     if GPS_data['year'].dtype != metadata['Year'].dtype:
         metadata['Year'] = metadata['Year'].astype(GPS_data['year'].dtype)
+    metadata['Weaners'] = metadata[['Weaner_males', 'Weaner_females',
+                                    'Weaner_unknown']].sum(axis=1)
     return GPS_data, metadata
 
 def check_for_missing_records(GPS_datafile, gps_metadata_file, result_dir):
