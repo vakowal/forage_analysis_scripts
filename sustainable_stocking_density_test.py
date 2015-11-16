@@ -9,7 +9,7 @@ import pandas as pd
 sys.path.append('C:/Users/ginge/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage
 
-def modify_stocking_density(herbivore_csv, change):
+def modify_stocking_density(herbivore_csv):
     """Modify the stocking density in the herbivore csv used as input to the
     forage model."""
     
@@ -17,7 +17,7 @@ def modify_stocking_density(herbivore_csv, change):
     df = df.set_index(['index'])
     assert len(df) == 1, "We can only handle one herbivore type"
     sd = df.iloc[0].stocking_density
-    new_sd = sd + change
+    new_sd = sd + 1
     df.set_value(0, 'stocking_density', new_sd)
     df.to_csv(herbivore_csv)
 
@@ -62,11 +62,7 @@ def run_test(args, input_dir, outer_dir, herbivore_csv, grass_label):
             forage.execute(args)
             summary_csv = os.path.join(args['outdir'], 'summary_results.csv')
             minimum_biomass = check_min_biomass(summary_csv, grass_label)
-            if minimum_biomass > threshold:
-                change = 1
-            elif minimum_biomass < threshold:
-                change = 1
-            modify_stocking_density(herbivore_csv, change)
+            modify_stocking_density(herbivore_csv)
             idx = idx + 1
     finally:
         shutil.copyfile(orig_herbivore_csv, herbivore_csv)
@@ -83,7 +79,8 @@ def collect_results(outer_dir, herd_label, grass_label):
                     'above_total_biomass_kg_ha': [],
                     'total_offtake_kg': [],
                     'precip_cm': [],
-                    'h20_avail_cm': [],
+                    'h2o_avail_cm': [],
+                    'h2o_deep_storage_cm': [],
                     'stream_flow_cm': [],
                     'below_biomass_gm2': [],
     }
@@ -94,16 +91,21 @@ def collect_results(outer_dir, herd_label, grass_label):
         for idx in xrange(12):
             summary_dict['stocking_density'].append(sd)
         cent_out = os.path.join(folder, "CENTURY_outputs_m12_y2015",
-                                "Research.lis")
+                                "%s.lis" % grass_label)
         cent_df = pd.read_fwf(cent_out)
         cent_df = cent_df.loc[cent_df['time'] >= 2015]
         cent_df = cent_df.loc[cent_df['time'] < 2016]
+        # we assume nlaypg (num soil layers for plant growth) == 4
+        cent_df['h2o_pg_cm'] = cent_df['asmos(1)'] + cent_df['asmos(2)'] +\
+                               cent_df['asmos(3)'] + cent_df['asmos(4)']
         for item in cent_df['time'].tolist():
             summary_dict['date'].append(item)
         for item in cent_df['rain'].tolist():
             summary_dict['precip_cm'].append(item)
-        for item in cent_df['avh2o(1)'].tolist():
-            summary_dict['h20_avail_cm'].append(item)
+        for item in cent_df['h2o_pg_cm'].tolist():
+            summary_dict['h2o_avail_cm'].append(item)
+        for item in cent_df['asmos(5)'].tolist():
+            summary_dict['h2o_deep_storage_cm'].append(item)
         for item in cent_df['stream(1)'].tolist():
             summary_dict['stream_flow_cm'].append(item)
         for item in cent_df['bglivc'].tolist():
@@ -142,13 +144,13 @@ if __name__ == "__main__":
     'user_define_protein': 1,
     'user_define_digestibility': 1,
     'herbivore_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivores.csv",
-    'grass_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1.csv",
+    'grass_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1_d_precip.csv",
     'supp_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
     'input_dir': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input",
     }
     grass_label = get_label(args['grass_csv'])
     input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs"
-    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test"
+    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test/doubled_precip"
     herbivore_csv = os.path.join(input_dir, "herd_average.csv")
     herd_label = get_label(herbivore_csv)
     

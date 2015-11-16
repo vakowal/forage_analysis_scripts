@@ -8,22 +8,22 @@ import shutil
 from subprocess import Popen
 import pandas
 
-sys.path.append('C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+sys.path.append('C:/Users/ginge/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage_utils as forage
 import forage_century_link_utils as cent
 import freer_param as FreerParam
 
 def run_simulations():
-    century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+    century_dir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
     fix_file = 'drytrpfi.100'
     graz_file = os.path.join(century_dir, "graz.100")
-    site_list = ['Research', 'Kamok', 'Loidien', 'Rongai']
-    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input"
-    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test"
+    site_list = ['Research', 'Loidien', 'Rongai']  #, 'Kamok']
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input"
+    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test"
     prop_legume = 0
     template_level = 'GL'
-    herb_class_weights = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/Boran_weights.csv"
-    sd_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density'
+    herb_class_weights = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/Boran_weights.csv"
+    sd_dir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density'
     breed = 'Boran'
     steepness = 1.
     latitude = 0
@@ -33,12 +33,12 @@ def run_simulations():
     forage.set_time_step('month')
     add_event = 1
     
-    grass_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass.csv"
+    grass_file = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass.csv"
     grass = (pandas.read_csv(grass_file)).to_dict(orient='records')[0]
-    grass['DMD_green'] = 0.5
-    grass['DMD_dead'] = 0.5
-    grass['cprotein_green'] = 0.06
-    grass['cprotein_dead'] = 0.06
+    grass['DMD_green'] = 0.64
+    grass['DMD_dead'] = 0.64
+    grass['cprotein_green'] = 0.1
+    grass['cprotein_dead'] = 0.1
 
     for site in site_list:
         spin_up_outputs = [site+'_hist_log.txt', site+'_hist.lis']
@@ -140,12 +140,12 @@ def run_simulations():
                 grass['prev_d_gm2'] = grass['dead_gm2']
                 grass['green_gm2'] = outputs.loc[target_month, 'aglivc']
                 grass['dead_gm2'] = outputs.loc[target_month, 'stdedc']
-                # grass['cprotein_green'] = (outputs.loc[target_month,
-                                           # 'aglive1'] / outputs.loc[
-                                                       # target_month, 'aglivc'])
-                # grass['cprotein_dead'] = (outputs.loc[target_month,
-                                          # 'stdede1'] / outputs.loc[
-                                                       # target_month, 'stdedc'])
+                grass['cprotein_green'] = (outputs.loc[target_month,
+                                           'aglive1'] / outputs.loc[
+                                                       target_month, 'aglivc'])
+                grass['cprotein_dead'] = (outputs.loc[target_month,
+                                          'stdede1'] / outputs.loc[
+                                                       target_month, 'stdedc'])
                 if row == 0:
                     available_forage = forage.calc_feed_types(grass_list)
                 else:
@@ -159,8 +159,8 @@ def run_simulations():
                                  '_kgha'].append(feed_type.biomass)
 
                 siteinfo.calc_distance_walked(FParam, available_forage)
-                # for feed_type in available_forage:
-                    # feed_type.calc_digestibility_from_protein()
+                for feed_type in available_forage:
+                    feed_type.calc_digestibility_from_protein()
                 total_biomass = forage.calc_total_biomass(available_forage)
                 # Initialize containers to track forage consumed across herbivore
                 # classes
@@ -310,7 +310,7 @@ def calculate_density(in_folder, result_dir):
 
 
 if __name__ == "__main__":
-    in_folder = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations'
-    result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density"
+    in_folder = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations'
+    result_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density"
     # calculate_density(in_folder, result_dir)
     run_simulations()
