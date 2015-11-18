@@ -6,7 +6,7 @@ import sys
 import shutil
 import pandas as pd
 
-sys.path.append('C:/Users/ginge/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+sys.path.append('C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage
 
 def modify_stocking_density(herbivore_csv):
@@ -137,20 +137,20 @@ if __name__ == "__main__":
     'start_month': 1,
     'num_months': 12,
     'mgmt_threshold': 0.1,
-    'century_dir': 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+    'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
     'outdir': "C://Users//Ginger//Documents//Python//Output",
     'template_level': 'GL',
     'fix_file': 'drytrpfi.100',
     'user_define_protein': 1,
     'user_define_digestibility': 1,
-    'herbivore_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivores.csv",
-    'grass_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1_d_precip.csv",
-    'supp_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
-    'input_dir': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input",
+    'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivores.csv",
+    'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1_d_precip.csv",
+    'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+    'input_dir': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input",
     }
     grass_label = get_label(args['grass_csv'])
-    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs"
-    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test/doubled_precip"
+    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test/30cm_precip"
     herbivore_csv = os.path.join(input_dir, "herd_average.csv")
     herd_label = get_label(herbivore_csv)
     

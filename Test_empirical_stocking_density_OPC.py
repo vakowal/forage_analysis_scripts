@@ -8,22 +8,22 @@ import shutil
 from subprocess import Popen
 import pandas
 
-sys.path.append('C:/Users/ginge/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+sys.path.append('C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage_utils as forage
 import forage_century_link_utils as cent
 import freer_param as FreerParam
 
 def run_simulations():
-    century_dir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+    century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
     fix_file = 'drytrpfi.100'
     graz_file = os.path.join(century_dir, "graz.100")
-    site_list = ['Research', 'Loidien', 'Rongai']  #, 'Kamok']
-    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input"
-    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test"
+    site_list = ['Research', 'Loidien']  #, 'Rongai', 'Kamok']
+    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test"
     prop_legume = 0
     template_level = 'GL'
-    herb_class_weights = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/Boran_weights.csv"
-    sd_dir = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density'
+    herb_class_weights = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/Boran_weights.csv"
+    sd_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density'
     breed = 'Boran'
     steepness = 1.
     latitude = 0
@@ -310,7 +310,7 @@ def calculate_density(in_folder, result_dir):
 
 
 if __name__ == "__main__":
-    in_folder = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations'
-    result_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density"
+    in_folder = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations'
+    result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/OPC_stocking_density"
     # calculate_density(in_folder, result_dir)
     run_simulations()
