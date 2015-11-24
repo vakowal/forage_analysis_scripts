@@ -4,20 +4,19 @@
 import os
 import sys
 import shutil
+import numpy as np
 import pandas as pd
 
 sys.path.append('C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage
 
-def modify_stocking_density(herbivore_csv):
+def modify_stocking_density(herbivore_csv, new_sd):
     """Modify the stocking density in the herbivore csv used as input to the
     forage model."""
     
     df = pd.read_csv(herbivore_csv)
     df = df.set_index(['index'])
     assert len(df) == 1, "We can only handle one herbivore type"
-    sd = df.iloc[0].stocking_density
-    new_sd = sd + 1
     df.set_value(0, 'stocking_density', new_sd)
     df.to_csv(herbivore_csv)
 
@@ -49,21 +48,16 @@ def run_test(args, input_dir, outer_dir, herbivore_csv, grass_label):
                                       '_orig.csv')
     shutil.copyfile(herbivore_csv, orig_herbivore_csv)
     args['herbivore_csv'] = herbivore_csv
-    threshold = 100
-    minimum_biomass = 1000
-    idx = 0
+    sd_list =  np.linspace(0.17535, 2, num=6)
     try:
-        while minimum_biomass > threshold and idx < 10:
-            args['outdir'] = os.path.join(outer_dir, "outputs_%d" % idx)
+        for sd in sd_list:
+            modify_stocking_density(herbivore_csv, sd)
+            args['outdir'] = os.path.join(outer_dir, "outputs_%f" % sd)
             if not os.path.exists(args['outdir']):
                 os.makedirs(args['outdir'])
             shutil.copyfile(herbivore_csv, os.path.join(args['outdir'],
                                                         'herbivore.csv'))
             forage.execute(args)
-            summary_csv = os.path.join(args['outdir'], 'summary_results.csv')
-            minimum_biomass = check_min_biomass(summary_csv, grass_label)
-            modify_stocking_density(herbivore_csv)
-            idx = idx + 1
     finally:
         shutil.copyfile(orig_herbivore_csv, herbivore_csv)
         os.remove(orig_herbivore_csv)
@@ -150,7 +144,7 @@ if __name__ == "__main__":
     }
     grass_label = get_label(args['grass_csv'])
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs"
-    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test/30cm_precip"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Output/Stocking_density_test/sustainable_limit_test/doubled_precip"
     herbivore_csv = os.path.join(input_dir, "herd_average.csv")
     herd_label = get_label(herbivore_csv)
     
