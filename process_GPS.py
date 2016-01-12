@@ -319,7 +319,7 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
             first = df.iloc[0].date
             start = pd.datetime(first.year, first.month, 1)
             # if the first record in the first month was from the first 10 days
-            # in the month, we include that month in our summ ary
+            # in the month, we include that month in our summary
             # if first.day > 10:
                 # start = start + DateOffset(months=1)
             last = df.iloc[-1].date
@@ -341,16 +341,19 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
             while time <= end:
                 records = df_i[((df_i.index.month == time.month) &
                                 (df_i.index.year == time.year))]
+                records = records.fillna(0)
+                daily_sum = records.groupby(pd.TimeGrouper(freq="D")).sum()
+                daily_sum = daily_sum.fillna(0)
                 ave_dict['month'].append(time.month)
                 ave_dict['year'].append(time.year)
-                ave_dict['Bulls'].append(records[['Bulls']].mean()[0])
-                ave_dict['Calves'].append(records[['Calves']].mean()[0])
-                ave_dict['Cows'].append(records[['Cows']].mean()[0])
-                ave_dict['Heifers'].append(records[['Heifers']].mean()[0])
-                ave_dict['Steers'].append(records[['Steers']].mean()[0])
-                ave_dict['Weaners'].append(records[['Weaners']].mean()[0])
-                ave_dict['steer/heifer'].append(records[[
-                                                    'steer/heifer']].mean()[0])
+                ave_dict['Bulls'].append(sum(daily_sum['Bulls'])/30.4)
+                ave_dict['Calves'].append(sum(daily_sum['Calves'])/30.4)
+                ave_dict['Cows'].append(sum(daily_sum['Cows'])/30.4)
+                ave_dict['Heifers'].append(sum(daily_sum['Heifers'])/30.4)
+                ave_dict['Steers'].append(sum(daily_sum['Steers'])/30.4)
+                ave_dict['Weaners'].append(sum(daily_sum['Weaners'])/30.4)
+                ave_dict['steer/heifer'].append(sum(daily_sum['steer/heifer'])
+                                                /30.4)
                 time = time + DateOffset(months=1)
             ave_df = pd.DataFrame(ave_dict)
             filename = 'average_animals_%s_%dkm.csv' % (point_name, distance)
@@ -443,9 +446,9 @@ if __name__ == "__main__":
     veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"
     distance = 2.
     # points_file = os.path.join(outerdir, '1km_grid0.csv')
-    # x_field = "POINT_X"
-    # y_field = "POINT_Y"
-    x_field = "Long"
-    y_field = "Lat"
-    summarize_density(points_file, x_field, y_field, gps_metadata_file,
-                      GPS_datafile, outerdir, veg_result_dir, distance)
+    x_field = "POINT_X"
+    y_field = "POINT_Y"
+    # x_field = "Long"
+    # y_field = "Lat"
+    summarize_density(weather_file, x_field, y_field, gps_metadata_file,
+                      GPS_datafile, outerdir, result_dir, distance)
