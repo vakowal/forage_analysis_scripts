@@ -346,14 +346,23 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                 daily_sum = daily_sum.fillna(0)
                 ave_dict['month'].append(time.month)
                 ave_dict['year'].append(time.year)
-                ave_dict['Bulls'].append(sum(daily_sum['Bulls'])/30.4)
-                ave_dict['Calves'].append(sum(daily_sum['Calves'])/30.4)
-                ave_dict['Cows'].append(sum(daily_sum['Cows'])/30.4)
-                ave_dict['Heifers'].append(sum(daily_sum['Heifers'])/30.4)
-                ave_dict['Steers'].append(sum(daily_sum['Steers'])/30.4)
-                ave_dict['Weaners'].append(sum(daily_sum['Weaners'])/30.4)
-                ave_dict['steer/heifer'].append(sum(daily_sum['steer/heifer'])
-                                                /30.4)
+                if len(records) == 0:
+                    ave_dict['Bulls'].append(0)
+                    ave_dict['Calves'].append(0)
+                    ave_dict['Cows'].append(0)
+                    ave_dict['Heifers'].append(0)
+                    ave_dict['Steers'].append(0)
+                    ave_dict['Weaners'].append(0)
+                    ave_dict['steer/heifer'].append(0)
+                else:
+                    ave_dict['Bulls'].append(sum(daily_sum['Bulls'])/30.4)
+                    ave_dict['Calves'].append(sum(daily_sum['Calves'])/30.4)
+                    ave_dict['Cows'].append(sum(daily_sum['Cows'])/30.4)
+                    ave_dict['Heifers'].append(sum(daily_sum['Heifers'])/30.4)
+                    ave_dict['Steers'].append(sum(daily_sum['Steers'])/30.4)
+                    ave_dict['Weaners'].append(sum(daily_sum['Weaners'])/30.4)
+                    ave_dict['steer/heifer'].append(sum(daily_sum[
+                                                    'steer/heifer'])/30.4)
                 time = time + DateOffset(months=1)
             ave_df = pd.DataFrame(ave_dict)
             filename = 'average_animals_%s_%dkm.csv' % (point_name, distance)
@@ -435,12 +444,12 @@ def check_for_missing_records(GPS_datafile, gps_metadata_file, result_dir):
     
 if __name__ == "__main__":
     outerdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/2015'
-    # GPS_data = combine_GPS_files(outerdir)
+    GPS_data = combine_GPS_files(outerdir)
     GPS_datafile = os.path.join(outerdir, "data_combined.csv")
-    # GPS_data.to_csv(GPS_datafile)
+    GPS_data.to_csv(GPS_datafile)
     points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
     # result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
-    result_dir = outerdir
+    result_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations'
     weather_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
     gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
     veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"

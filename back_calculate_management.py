@@ -1,52 +1,73 @@
 ## guess management by matching biomass in CENTURY
-import forage_century_link_utils as cent
 import math
 import csv
 import os
+import sys
 from subprocess import Popen
 import shutil
+sys.path.append(
+ 'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+import forage_century_link_utils as cent
 
-n_years = 2 # how many years to potentially manipulate?
-century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
-graz_file = os.path.join(century_dir, "graz.100")
-out_dir = "C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\modify_management"  # where to put results of this routine
-vary = 'both' # 'schedule', 'intensity', 'both'
-live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
-threshold = 15.0  # must match biomass within this many g per sq m
-max_iterations = 20  # number of times to try
-fix_file = 'drytrpfi.100'
-outvars = 'outvars.txt'
-
-GT_site = {'name': 'GT', 'biomass': 452.1, 'date': 2012.5}
-M05_site = {'name': 'M05', 'biomass': 103.1, 'date': 2013.5}
-MO_site = {'name': 'MO', 'biomass': 165.4, 'date': 2012.5}
-N4_site = {'name': 'N4', 'biomass': 464.5, 'date': 2014.}
-W3_site = {'name': 'W3', 'biomass': 148.8, 'date': 2014.}
-W06_site = {'name': 'W06', 'biomass': 315.0, 'date': 2013.5}
-
-site_list = [GT_site, M05_site, MO_site, N4_site, W3_site, W06_site]
-
-for site in site_list:
+def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
+                              n_years, vary, live_or_total, threshold,
+                              max_iterations):
+    """Calc"""
+    
     empirical_biomass = site['biomass']
     empirical_date = site['date']
     schedule = site['name'] + '.sch'
-    century_bat = site['name'] + '.bat'
+    schedule_file = os.path.join(input_dir, schedule)
+    graz_file = os.path.join(century_dir, "graz.100")
     output = site['name'] + 'mod-manag.lis'
-    schedule_file = os.path.join(century_dir, schedule)
-    output_file = os.path.join(century_dir, output)
           
     # check that last block in schedule file includes >= n_years before
     # empirical_date
     cent.check_schedule(schedule_file, n_years, empirical_date)
 
-    # write batch file to call CENTURY
-    cent.write_century_bat(century_dir, century_bat, schedule, output,
-                           fix_file, outvars)
-
+    # write CENTURY batch file for spin-up simulation
+    hist_bat = os.path.join(input_dir, (site['name'] +
+                            '_hist.bat'))
+    hist_schedule = site['name'] + '_hist.sch'
+    hist_output = site['name'] + '_hist'
+    cent.write_century_bat(input_dir, hist_bat, hist_schedule, hist_output,
+                           fix_file, 'outvars.txt')
+    # write CENTURY bat for extend simulation
+    extend_bat = os.path.join(input_dir, (site['name'] + '.bat'))
+    extend = site['name'] + '_hist'
+    cent.write_century_bat(input_dir, extend_bat, schedule, output, fix_file,
+                           'outvars.txt', extend)
     # make a copy of the original graz params and schedule file
     shutil.copyfile(graz_file, os.path.join(century_dir, 'graz_orig.100'))
-    shutil.copyfile(schedule_file, os.path.join(century_dir, 'sch_orig.100'))
+    shutil.copyfile(schedule_file, os.path.join(input_dir, 'sch_orig.sch'))
+    
+    spin_up_outputs = [site['name'] + '_hist_log.txt',
+                       site['name'] + '_hist.lis']
+    century_outputs = [output + '_log.txt', output + '.lis', output + '.bin']
+    # move CENTURY run files to CENTURY dir
+    site_file = os.path.join(input_dir, site['name'] + '.100')
+    weather_file = os.path.join(input_dir, site['name'] + '.wth')
+    e_schedule = os.path.join(input_dir, site['name'] + '.sch')
+    h_schedule = os.path.join(input_dir, site['name'] + '_hist.sch')
+    file_list = [hist_bat, extend_bat, e_schedule, h_schedule, site_file,
+                 weather_file]
+    for file in file_list:
+        shutil.copyfile(file, os.path.join(century_dir,
+                                           os.path.basename(file)))
+    # run CENTURY for spin-up                           
+    hist_bat = os.path.join(century_dir, (site['name'] + '_hist.bat'))
+    century_bat = os.path.join(century_dir, (site['name'] + '.bat'))
+    p = Popen(["cmd.exe", "/c " + hist_bat], cwd=century_dir)
+    stdout, stderr = p.communicate()
 
+    # save copies of CENTURY outputs, but remove from CENTURY dir
+    intermediate_dir = os.path.join(out_dir, 'CENTURY_outputs_spin_up')
+    if not os.path.exists(intermediate_dir):
+        os.makedirs(intermediate_dir)
+    for file in spin_up_outputs:
+        shutil.copyfile(os.path.join(century_dir, file),
+                        os.path.join(intermediate_dir, file))
+        os.remove(os.path.join(century_dir, file))
     # start summary csv
     summary_csv = os.path.join(out_dir, 'modify_management_summary' +
                                site['name'] + '.csv')
@@ -60,18 +81,28 @@ for site in site_list:
                 row.append(empirical_biomass)
                 
                 # call CENTURY from the batch file
-                p = Popen(["cmd.exe", "/c " + century_bat], cwd = century_dir)
+                p = Popen(["cmd.exe", "/c " + century_bat], cwd=century_dir)
                 p.wait()
-                
+                intermediate_dir = os.path.join(out_dir,
+                                     'CENTURY_outputs_iteration%d' % iter)
+                if not os.path.exists(intermediate_dir):
+                    os.makedirs(intermediate_dir)
+                for file in century_outputs:
+                    shutil.copyfile(os.path.join(century_dir, file),
+                                    os.path.join(intermediate_dir, file))
+                    os.remove(os.path.join(century_dir, file))
+            
                 # check that CENTURY completed successfully
                 if output[-4:] == '.lis':
-                    output_log = os.path.join(century_dir, output[:-4] +
+                    output_log = os.path.join(intermediate_dir, output[:-4] +
                                               '_log.txt')
                 else:
-                    output_log = os.path.join(century_dir, output + '_log.txt')
+                    output_log = os.path.join(intermediate_dir, output +
+                                              '_log.txt')
                 cent.check_CENTURY_log(output_log)
 
                 # get simulated biomass
+                output_file = os.path.join(intermediate_dir, output)
                 biomass_df = cent.read_CENTURY_outputs(output_file,
                                                        math.floor(
                                                            empirical_date) - 1,
@@ -106,7 +137,7 @@ for site in site_list:
                         # TODO the grazing level here should reflect what's in
                         # the schedule file
                         success = cent.modify_intensity(increase_intensity,
-                                                        graz_file, 'GH',
+                                                        graz_file, 'GLP',
                                                         out_dir, site['name']
                                                         + str(iter))
                         if not success:
@@ -116,20 +147,20 @@ for site in site_list:
                     elif vary == 'schedule':
                         # add or remove scheduled grazing events
                         target_dict = cent.find_target_month(increase_intensity,
-                                                             schedule_file,
+                                                             e_schedule,
                                                              empirical_date,
                                                              n_years)
-                        cent.modify_schedule(schedule_file, increase_intensity,
+                        cent.modify_schedule(e_schedule, increase_intensity,
                                              target_dict, 'GL', out_dir,
                                              site['name'] + str(iter))
                     elif vary == 'both':
                         target_dict = cent.find_target_month(increase_intensity,
-                                                             schedule_file,
+                                                             e_schedule,
                                                              empirical_date,
                                                              n_years)
                         if target_dict:
                             # there are opportunities to modify the schedule
-                            cent.modify_schedule(schedule_file,
+                            cent.modify_schedule(e_schedule,
                                                  increase_intensity,
                                                  target_dict, 'GL', out_dir,
                                                  site['name'] + str(iter))
@@ -153,7 +184,27 @@ for site in site_list:
         shutil.copyfile(os.path.join(century_dir, 'graz_orig.100'), graz_file)
         os.remove(os.path.join(century_dir, 'graz_orig.100'))
         os.remove(schedule_file)
-        shutil.copyfile(os.path.join(century_dir, 'sch_orig.100'),
+        shutil.copyfile(os.path.join(input_dir, 'sch_orig.100'),
                         schedule_file)
         os.remove(os.path.join(century_dir, 'sch_orig.100'))
         
+if __name__ == "__main__":
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
+    n_years = 1 # how many years to potentially manipulate?
+    century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
+    out_dir = "C:\Users\Ginger\Desktop\test_1.13.16"  # where to put results of this routine
+    vary = 'both' # 'schedule', 'intensity', 'both'
+    live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
+    threshold = 15.0  # must match biomass within this many g per sq m
+    max_iterations = 20  # number of times to try
+    fix_file = 'drytrpfi.100'
+
+    kamok = {'name': 'Kamok', 'biomass': 452.1, 'date': 2012.5}
+   
+
+    site_list = [GT_site, M05_site, MO_site, N4_site, W3_site, W06_site]
+    
+    for site in site_list:
+        back_calculate_management(site, input_dir, century_dir, out_dir,
+                                  fix_file, n_years, vary, live_or_total,
+                                  threshold, max_iterations)

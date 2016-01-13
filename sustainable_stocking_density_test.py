@@ -122,25 +122,25 @@ def collect_results(outer_dir, herd_label, grass_label):
         
 if __name__ == "__main__":
     args = {
-    'latitude': 0.083,
-    'prop_legume': 0.0,
-    'breed': 'Brahman',  # see documentation for allowable breeds; assumed to apply to all animal classes
-    'steepness': 1.,
-    'DOY': 1,
-    'start_year': 2015,
-    'start_month': 1,
-    'num_months': 12,
-    'mgmt_threshold': 0.1,
-    'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
-    'outdir': "C://Users//Ginger//Documents//Python//Output",
-    'template_level': 'GL',
-    'fix_file': 'drytrpfi.100',
-    'user_define_protein': 1,
-    'user_define_digestibility': 1,
-    'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivores.csv",
-    'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1_d_precip.csv",
-    'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
-    'input_dir': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input",
+        'latitude': 0.083,
+        'prop_legume': 0.0,
+        'breed': 'Brahman',  # see documentation for allowable breeds; assumed to apply to all animal classes
+        'steepness': 1.,
+        'DOY': 1,
+        'start_year': 2015,
+        'start_month': 1,
+        'num_months': 12,
+        'mgmt_threshold': 0.1,
+        'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+        'outdir': "C://Users//Ginger//Documents//Python//Output",
+        'template_level': 'GL',
+        'fix_file': 'drytrpfi.100',
+        'user_define_protein': 1,
+        'user_define_digestibility': 1,
+        'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivores.csv",
+        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grass_.64_.1_d_precip.csv",
+        'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+        'input_dir': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input",
     }
     grass_label = get_label(args['grass_csv'])
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs"

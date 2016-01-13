@@ -31,7 +31,7 @@ def run_test():
     herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
     grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_Shem_et_al_1995.csv"
     grass_list = (pandas.read_csv(grass_csv)).to_dict(orient='records')
-    out_name = os.path.join(outdir, "summary.csv")
+    out_name = os.path.join(outdir, "summary_supplemented_0.8_rumen_deg.csv")
 
     supp_list = (pandas.read_csv(supp_csv)).to_dict(orient='records')
     supp_info = supp_list[0]
@@ -55,9 +55,9 @@ def run_test():
             for h_class in herbivore_input:
                 herd = forage.HerbivoreClass(FParam, breed, h_class['weight'],
                                              h_class['sex'], h_class['age'],
-                                             h_class['stocking_density'],
-                                             label=h_class['label'], SRW=200)
-                herd.update(FParam, 0, 0)
+                                             h_class['stocking_density'], 160,
+                                             label=h_class['label'])
+                herd.update(FParam)
                 herbivore_list.append(herd)
                 print "beginning weight: " + str(herd.W)
                 print "beginning BC: " + str(herd.BC)
