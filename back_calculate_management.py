@@ -12,7 +12,9 @@ import forage_century_link_utils as cent
 def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                               n_years, vary, live_or_total, threshold,
                               max_iterations):
-    """Calc"""
+    """Calculate grazing history at a site by adding or removing grazing events
+    and modifying grazing intensity until an empirical biomass target is
+    reached."""
     
     empirical_biomass = site['biomass']
     empirical_date = site['date']
