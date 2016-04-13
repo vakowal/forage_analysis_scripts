@@ -13,7 +13,6 @@ import csv
 import pandas
 
 def run_test():
-    outdir = 'C:/Users/Ginger/Desktop/Shem_test'
     total_SD = 1.
     site = forage.SiteInfo(1., -3.25)
     prop_legume = 0.0
@@ -30,7 +29,7 @@ def run_test():
     herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
     grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_Shem_et_al_1995.csv"
     grass_list = (pandas.read_csv(grass_csv)).to_dict(orient='records')
-    out_name = os.path.join(outdir, "summary_supplemented.csv")
+    out_name = os.path.join(outdir, "summary_unsupplemented_MEI_t1.csv")
 
     supp_list = (pandas.read_csv(supp_csv)).to_dict(orient='records')
     supp_info = supp_list[0]
@@ -42,11 +41,12 @@ def run_test():
                              supp_info['rumen_degradability'])
     if supp.DMO > 0.:
         supp_available = 1
-    # supp_available = 0  # change to allow supplementation
+    supp_available = 0  # change to allow supplementation
     with open(out_name, 'wb') as out:
         writer = csv.writer(out, delimiter=',')
-        header = ['red_max_intake', 'max_intake', 'intake_forage', 'intake_supp',
-                  'daily_gain', 'grass_label', 'step', 'study']
+        header = ['red_max_intake', 'max_intake', 'intake_forage',
+                  'intake_supp', 'daily_gain', 'daily_gain_t1', 'grass_label',
+                  'step', 'study']
         writer.writerow(header)
         for grass in grass_list:
             one_grass = [grass]
@@ -69,6 +69,12 @@ def run_test():
                 row = forage.one_step(site, DOY, herd,
                                       available_forage, prop_legume,
                                       supp_available, supp, force_supp=1)
+                daily_intake = row[2] + row[3]
+                MEI_t1 = 6. * float(daily_intake)
+                herd_t1 = forage.HerdT1(herd.W, 297)
+                maint_t1 = herd_t1.e_maintenance()
+                delta_W_t1 = herd_t1.e_allocate(MEI_t1, maint_t1, 'moderate')
+                row.append(delta_W_t1)
                 row.append(grass['label'])
                 row.append(step)
                 row.append('Schem_et_al')

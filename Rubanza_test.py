@@ -103,6 +103,10 @@ def one_step(site, DOY, herb_class, available_forage, prop_legume,
                                          prop_legume, DOY)
     delta_W = forage.calc_delta_weight(diet_interm, herb_class)
     delta_W_step = forage.convert_daily_to_step(delta_W)
+    herd_t1 = forage.HerdT1(herb_class.W, 297)
+    maint_t1 = herd_t1.e_maintenance()
+    delta_W_t1 = herd_t1.e_allocate(diet_interm.MEItotal, maint_t1,
+                                    'moderate')
     herb_class.update(delta_weight=delta_W_step,
                       delta_time=forage.find_days_per_step())
 
@@ -112,6 +116,7 @@ def one_step(site, DOY, herb_class, available_forage, prop_legume,
     row.append(diet.CPIf)
     row.append(diet_interm.MEItotal)
     row.append(delta_W)
+    row.append(delta_W_t1)
     return row
 
 out_name = os.path.join(outdir, 'summary_force_supp_force_intake.csv')
@@ -119,7 +124,7 @@ with open(out_name, 'wb') as out:
     writer = csv.writer(out, delimiter=',')
     header = ['supp_level', 'reduced_max_intake', 'max_intake',
               'intake_forage', 'intake_supp', 'CPI_forage', 'ME_intake_total',
-              'daily_gain', 'step']
+              'daily_gain', 'daily_gain_t1', 'step']
     writer.writerow(header)
     for i in xrange(len(supp_list)):
        supp = supp_list[i]
