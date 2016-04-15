@@ -29,7 +29,7 @@ def run_test():
     herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
     grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_Shem_et_al_1995.csv"
     grass_list = (pandas.read_csv(grass_csv)).to_dict(orient='records')
-    out_name = os.path.join(outdir, "summary_unsupplemented_MEI_t1.csv")
+    out_name = os.path.join(outdir, "summary_unsupplemented_CK13x2_CG2=1_CM2div10_CM12div10_unreduced.csv")
 
     supp_list = (pandas.read_csv(supp_csv)).to_dict(orient='records')
     supp_info = supp_list[0]
@@ -45,7 +45,7 @@ def run_test():
     with open(out_name, 'wb') as out:
         writer = csv.writer(out, delimiter=',')
         header = ['red_max_intake', 'max_intake', 'intake_forage',
-                  'intake_supp', 'daily_gain', 'daily_gain_t1', 'grass_label',
+                  'intake_supp', 'daily_gain', 'grass_label',
                   'step', 'study']
         writer.writerow(header)
         for grass in grass_list:
@@ -68,13 +68,7 @@ def run_test():
                 DOY = DOY_start + step
                 row = forage.one_step(site, DOY, herd,
                                       available_forage, prop_legume,
-                                      supp_available, supp, force_supp=1)
-                daily_intake = row[2] + row[3]
-                MEI_t1 = 6. * float(daily_intake)
-                herd_t1 = forage.HerdT1(herd.W, 297)
-                maint_t1 = herd_t1.e_maintenance()
-                delta_W_t1 = herd_t1.e_allocate(MEI_t1, maint_t1, 'moderate')
-                row.append(delta_W_t1)
+                                      supp_available, supp)
                 row.append(grass['label'])
                 row.append(step)
                 row.append('Schem_et_al')
