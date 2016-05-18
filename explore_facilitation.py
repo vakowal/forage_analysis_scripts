@@ -157,8 +157,8 @@ def different_diets(available_forage, herbivore_csv, weight_1):
         herd.update()
         herbivore_list.append(herd)
     
-    avail_weights = [weight_1, 1 - weight_1]
-    qual_weights = [1.0 - w for w in avail_weights]
+    avail_weights = [weight_1, 0]
+    qual_weights = [0, weight_1]
     
     diet_dict = {}        
     for idx in xrange(len(herbivore_list)):
@@ -239,11 +239,11 @@ def run_test(save_as):
                     }
     herbivore_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbs_diet_illustration.csv"
     for total_biomass in np.linspace(40, 4000, 10):
-        for abun_ratio in np.linspace(1.5, 10, 10):
+        for abun_ratio in [10]:  # np.linspace(1.5, 10, 10):
             for cp_mean in np.linspace(0.04, 0.2, 10):
-                for cp_ratio in np.linspace(1.5, 10, 10):
+                for cp_ratio in [10]:  # np.linspace(1.5, 10, 10):
                     for abun_cp_same in [0, 1]:
-                        for weight_1 in np.linspace(0.01, 0.45, 10):
+                        for weight_1 in [0.01, 0.1, 1, 10, 100]:
                             available_forage = fabricate_forage(
                                                  total_biomass, abun_ratio,
                                                  cp_mean, cp_ratio,
@@ -264,5 +264,5 @@ def run_test(save_as):
     df.to_csv(save_as)
     
 if __name__ == "__main__":
-    save_as = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/facilitation_exploration/test_segregation.csv'
+    save_as = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/facilitation_exploration/test_segregation2.csv'
     run_test(save_as)
