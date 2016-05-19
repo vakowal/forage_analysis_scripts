@@ -9,8 +9,9 @@ import numpy as np
 from operator import attrgetter
 import sys
 sys.path.append('C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
-import forage_utils as forage
+import forage_utils as forage_u
 import freer_param as FreerParam
+import forage
 
 def fabricate_forage(total_biomass, abun_ratio, cp_mean, cp_ratio,
                      abun_cp_same):
@@ -26,14 +27,14 @@ def fabricate_forage(total_biomass, abun_ratio, cp_mean, cp_ratio,
     
     available_forage = []
     if abun_cp_same:
-        available_forage.append(forage.FeedType('grass1', 'green', lower_abun,
+        available_forage_u.append(forage_u.FeedType('grass1', 'green', lower_abun,
                                 0., lower_cp, 'C4'))
-        available_forage.append(forage.FeedType('grass2', 'green', higher_abun,
+        available_forage_u.append(forage_u.FeedType('grass2', 'green', higher_abun,
                                 0., higher_cp, 'C4'))
     else:
-        available_forage.append(forage.FeedType('grass1', 'green', lower_abun,
+        available_forage_u.append(forage_u.FeedType('grass1', 'green', lower_abun,
                                 0., higher_cp, 'C4'))
-        available_forage.append(forage.FeedType('grass2', 'green', higher_abun,
+        available_forage_u.append(forage_u.FeedType('grass2', 'green', higher_abun,
                                 0., lower_cp, 'C4'))
     for feed_type in available_forage:
         feed_type.rel_availability = feed_type.biomass / total_biomass
@@ -52,11 +53,11 @@ def diet_selection_t2(ZF, HR, prop_legume, supp_available, supp, Imax, FParam,
 
     Returns daily intake of forage (kg; including seeds), daily intake of
     supplement (kg), average dry matter digestibility of forage, and average
-    crude protein intake from forage."""
+    crude protein intake from forage_u."""
 
     available_forage = sorted(available_forage, reverse=True,
                               key=attrgetter('digestibility'))
-    diet_selected = forage.Diet()
+    diet_selected = forage_u.Diet()
     if Imax == 0:
         for f_index in range(len(available_forage)):
             f_label = available_forage[f_index].label + ';' +\
@@ -134,17 +135,17 @@ def different_diets(available_forage, herbivore_csv, weight_1):
     ratio describes the ratio of """
     
     time_step = 'month'
-    forage.set_time_step(time_step)
+    forage_u.set_time_step(time_step)
     total_SD = 2
     prop_legume = 0
     DOY = 100
     supp_available = 0
-    site = forage.SiteInfo(1., -3.25)
+    site = forage_u.SiteInfo(1., -3.25)
     
     supp_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Shem_et_al_1995_supp.csv"
     supp_list = (pandas.read_csv(supp_csv)).to_dict(orient='records')
     supp_info = supp_list[0]
-    supp = forage.Supplement(FreerParam.FreerParamCattle('indicus'),
+    supp = forage_u.Supplement(FreerParam.FreerParamCattle('indicus'),
                              supp_info['digestibility'],
                              supp_info['kg_per_day'], supp_info['M_per_d'],
                              supp_info['ether_extract'],
@@ -153,7 +154,7 @@ def different_diets(available_forage, herbivore_csv, weight_1):
     herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
     herbivore_list = []
     for h_class in herbivore_input:
-        herd = forage.HerbivoreClass(h_class)
+        herd = forage_u.HerbivoreClass(h_class)
         herd.update()
         herbivore_list.append(herd)
     
@@ -169,21 +170,21 @@ def different_diets(available_forage, herbivore_csv, weight_1):
         max_intake = herb_class.calc_max_intake()
 
         ZF = herb_class.calc_ZF()
-        HR = forage.calc_relative_height(available_forage)
+        HR = forage_u.calc_relative_height(available_forage)
         diet = diet_selection_t2(ZF, HR, prop_legume,
                                         supp_available, supp,
                                         max_intake, herb_class.FParam,
                                         available_forage, idx, f_w, rq_w)
-        diet_interm = forage.calc_diet_intermediates(
+        diet_interm = forage_u.calc_diet_intermediates(
                         diet, supp, herb_class, site,
                         prop_legume, DOY)
         # if herb_class.type != 'hindgut_fermenter':
-            # reduced_max_intake = forage.check_max_intake(diet,
+            # reduced_max_intake = forage_u.check_max_intake(diet,
                                                          # diet_interm,
                                                          # herb_class,
                                                          # max_intake)
             # if reduced_max_intake < max_intake:
-                # diet = forage.diet_selection_t2(ZF, HR,
+                # diet = forage_u.diet_selection_t2(ZF, HR,
                                                 # args[u'prop_legume'],
                                                 # supp_available, supp,
                                                 # reduced_max_intake,
@@ -191,15 +192,15 @@ def different_diets(available_forage, herbivore_csv, weight_1):
                                                 # available_forage)
         diet_dict[herb_class.label] = diet
     return diet_dict
-    # forage.reduce_demand(diet_dict, stocking_density_dict,
+    # forage_u.reduce_demand(diet_dict, stocking_density_dict,
                          # available_forage)
-    diet_interm = forage.calc_diet_intermediates(
+    diet_interm = forage_u.calc_diet_intermediates(
                                         diet, supp, herb_class, site,
                                         prop_legume, DOY)
-    delta_W = forage.calc_delta_weight(diet_interm, herb_class)
-    delta_W_step = forage.convert_daily_to_step(delta_W)
+    delta_W = forage_u.calc_delta_weight(diet_interm, herb_class)
+    delta_W_step = forage_u.convert_daily_to_step(delta_W)
     herb_class.update(delta_weight=delta_W_step,
-                      delta_time=forage.find_days_per_step())
+                      delta_time=forage_u.find_days_per_step())
 
 def calc_diet_segregation(diet_dict):
     """Calculate the segregation between diets of two herbivores. This is
@@ -262,7 +263,34 @@ def run_test(save_as):
                             summary_dict['segregation'].append(segregation)
     df = pandas.DataFrame(summary_dict)
     df.to_csv(save_as)
-    
+
+def launch_model():
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs"
+    forage_args = {
+        'latitude': 0.02759,
+        'prop_legume': 0.0,
+        'steepness': 1.,
+        'DOY': 1,
+        'start_year': 2015,
+        'start_month': 1,
+        'num_months': 12,
+        'mgmt_threshold': 0.1,
+        'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+        'outdir': "",
+        'template_level': 'GL',
+        'fix_file': 'drytrpfi.100',
+        'user_define_protein': 1,
+        'user_define_digestibility': 0,
+        'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbs_diet_illustration.csv",
+        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_diet_illustration.csv",
+        'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+        'input_dir': input_dir,
+        'restart_yearly': 0,
+    }
+    out_dir = os.path.join(outer_dir, 'sd_0.4', 'weights_10_5.19.16')
+    forage_args['outdir'] = out_dir
+    forage.execute(forage_args)
+        
 if __name__ == "__main__":
-    save_as = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/facilitation_exploration/test_segregation2.csv'
-    run_test(save_as)
+    launch_model()
