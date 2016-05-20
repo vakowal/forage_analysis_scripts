@@ -264,9 +264,8 @@ def run_test(save_as):
     df = pandas.DataFrame(summary_dict)
     df.to_csv(save_as)
 
-def launch_model():
+def launch_model(herb_csv, outdir):
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
-    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs"
     forage_args = {
         'latitude': 0.02759,
         'prop_legume': 0.0,
@@ -277,20 +276,63 @@ def launch_model():
         'num_months': 12,
         'mgmt_threshold': 0.1,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
-        'outdir': "",
+        'outdir': outdir,
         'template_level': 'GL',
         'fix_file': 'drytrpfi.100',
         'user_define_protein': 1,
         'user_define_digestibility': 0,
-        'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbs_diet_illustration.csv",
+        'herbivore_csv': herb_csv,
         'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_diet_illustration.csv",
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 0,
     }
-    out_dir = os.path.join(outer_dir, 'sd_0.4', 'weights_10_5.19.16')
-    forage_args['outdir'] = out_dir
     forage.execute(forage_args)
-        
+
+def change_herbivore_weights(herb_csv, weight):
+    """Manipulate quantity and quality weights."""
+    
+    df = pandas.read_csv(herb_csv)
+    df = df.set_value(0, 'quant_weight', weight)
+    df = df.set_value(0, 'qual_weight', 0)
+    df = df.set_value(1, 'quant_weight', 0)
+    df = df.set_value(1, 'qual_weight', weight)
+    df = df.set_index('label')
+    df.to_csv(herb_csv)
+
+def launch_model_and_summarize_plant_composition():    
+    """Run the model for a series of weights and compare plant composition
+    resulting from those weights.  Does variation in diet selection between
+    herbivores drive differences in plant community composition?"""
+    
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs"
+    herb_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbs_diet_illustration.csv"
+    weight_list = [0, 1, 10]
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\asymmetric_weight_effects_grass_proportions.csv"
+    for weight in weight_list:
+        outdir = os.path.join(outer_dir, 'outputs_asymmetric_w%d' % weight)
+        change_herbivore_weights(herb_csv, weight)
+        launch_model(herb_csv, outdir)
+    summary_dict = {'weight': [],
+                    'step': [],
+                    'diff_abs': [],
+                    'diff_proportion': [],
+                    }
+    for weight in weight_list:
+        sum_csv = os.path.join(outer_dir, 'outputs_w%d' % weight,
+                               'summary_results.csv')
+        df = pandas.read_csv(sum_csv)
+        sum_g1 = df.grass_1_green_kgha + df.grass_1_dead_kgha
+        sum_g2 = df.grass_2_green_kgha + df.grass_2_dead_kgha
+        total_g = sum_g1 + sum_g2
+        diff_abs = abs(sum_g1 - sum_g2)
+        diff_prop = abs((sum_g1 / total_g) - (sum_g2 / total_g))
+        summary_dict['diff_abs'] += diff_abs.tolist()
+        summary_dict['diff_proportion'] += diff_prop.tolist()
+        summary_dict['step'] += df.step.tolist()
+        summary_dict['weight'] += [weight] * len(df.step)
+    df = pandas.DataFrame(summary_dict)
+    df.to_csv(save_as)
+    
 if __name__ == "__main__":
-    launch_model()
+    launch_model_and_summarize_plant_composition()
