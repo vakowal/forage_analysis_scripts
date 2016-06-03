@@ -13,6 +13,32 @@ import forage_utils as forage_u
 import freer_param as FreerParam
 import forage
 
+def calculate_new_growth(run_dir, grass_csv, year):
+    """Calculate the percentage of biomass that is new growth each month.
+    run_dir is the directory of the model run. grass_csv is the input csv
+    describing grasses used in the simulation. year is the year for which we
+    will calculate percent new growth."""
+    
+    cent_dir = "CENTURY_outputs_m12_y%s" % str(year)
+    biomass_t = [0] * 12
+    new_growth_t = [0] * 12
+    grass_list = pandas.read_csv(grass_csv)
+    for gr in grass_list.label.unique():
+        filename = os.path.join(run_dir, cent_dir, "%s.lis" % gr)
+        gr_df = pandas.read_fwf(filename)
+        sub_df = gr_df.loc[gr_df['time'] > year]
+        sub_df = sub_df.loc[sub_df['time'] <= year + 1]
+        sub_df = sub_df.drop_duplicates('time')
+        growth = sub_df.agcacc.values
+        biomass = sub_df.aglivc.values
+        new_growth = [growth[0]]
+        for idx in range(1,12):
+            new_growth.append(growth[idx] - growth[idx - 1])
+        new_growth_t = [a + b for a, b in zip(new_growth_t, new_growth)]
+        biomass_t = [a + b for a, b in zip(biomass_t, biomass)]
+    perc_new_growth = [a / b for a, b in zip(new_growth_t, biomass_t)]
+    return perc_new_growth        
+    
 def fabricate_forage(total_biomass, abun_ratio, cp_mean, cp_ratio,
                      abun_cp_same):
     """Populate available forage with two grass types that relate to each other
@@ -277,15 +303,16 @@ def launch_model(herb_csv, outdir):
         'mgmt_threshold': 0.1,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
         'outdir': outdir,
-        'template_level': 'GL',
+        'template_level': 'GH',
         'fix_file': 'drytrpfi.100',
-        'user_define_protein': 1,
+        'user_define_protein': 0,
         'user_define_digestibility': 0,
         'herbivore_csv': herb_csv,
-        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_diet_illustration.csv",
+        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/C_dactylon_T_triandra.csv",
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 0,
+        'diet_verbose': 0,
     }
     forage.execute(forage_args)
 
@@ -333,6 +360,27 @@ def launch_model_and_summarize_plant_composition():
         summary_dict['weight'] += [weight] * len(df.step)
     df = pandas.DataFrame(summary_dict)
     df.to_csv(save_as)
+
+def stocking_density_percent_new_growth_test():
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\sd_new_growth\new_growth_summary.csv"
+    grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/C_dactylon_T_triandra.csv"
+    herb_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\facilitation_exploration\herb1_sd_levels"
+    outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\sd_new_growth"
+    year = 2015
+    sum_dict = {'stocking_density': [], 'month': [], 'perc_new_growth': []}
+    for sd in [.1, .3, .5, .7, .9, 1.1, 1.3, 1.5]:
+        sum_dict['month'] = sum_dict['month'] + range(1,13)
+        sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 12
+        herb_csv = os.path.join(herb_dir, 'herb1_%s.csv' % str(sd))
+        outdir = os.path.join(outer_out_dir, str(sd))
+        if not os.path.exists(outdir):
+            launch_model(herb_csv, outdir)
+        perc_new_growth = calculate_new_growth(outdir, grass_csv, year)
+        sum_dict['perc_new_growth'] = sum_dict['perc_new_growth'] + \
+                                        perc_new_growth
+                                 
+    sum_df = pandas.DataFrame(sum_dict)
+    sum_df.to_csv(save_as, index=False)
     
 if __name__ == "__main__":
-    launch_model_and_summarize_plant_composition()
+    stocking_density_percent_new_growth_test()
