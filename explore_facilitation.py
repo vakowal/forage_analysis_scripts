@@ -37,7 +37,7 @@ def calculate_new_growth(run_dir, grass_csv, year):
         new_growth_t = [a + b for a, b in zip(new_growth_t, new_growth)]
         biomass_t = [a + b for a, b in zip(biomass_t, biomass)]
     perc_new_growth = [a / b for a, b in zip(new_growth_t, biomass_t)]
-    return perc_new_growth        
+    return new_growth, biomass_t, perc_new_growth
     
 def fabricate_forage(total_biomass, abun_ratio, cp_mean, cp_ratio,
                      abun_cp_same):
@@ -362,23 +362,27 @@ def launch_model_and_summarize_plant_composition():
     df.to_csv(save_as)
 
 def stocking_density_percent_new_growth_test():
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\sd_new_growth\new_growth_summary.csv"
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\sd_new_growth\cattle_new_growth_summary.csv"
     grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/C_dactylon_T_triandra.csv"
-    herb_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\facilitation_exploration\herb1_sd_levels"
+    herb_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\facilitation_exploration\cattle_sd_levels"
     outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\sd_new_growth"
     year = 2015
-    sum_dict = {'stocking_density': [], 'month': [], 'perc_new_growth': []}
-    for sd in [.1, .3, .5, .7, .9, 1.1, 1.3, 1.5]:
-        sum_dict['month'] = sum_dict['month'] + range(1,13)
-        sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 12
-        herb_csv = os.path.join(herb_dir, 'herb1_%s.csv' % str(sd))
-        outdir = os.path.join(outer_out_dir, str(sd))
-        if not os.path.exists(outdir):
-            launch_model(herb_csv, outdir)
-        perc_new_growth = calculate_new_growth(outdir, grass_csv, year)
-        sum_dict['perc_new_growth'] = sum_dict['perc_new_growth'] + \
-                                        perc_new_growth
-                                 
+    sum_dict = {'stocking_density': [], 'month': [], 'label': [],
+                'biomass': []}
+    for sd in [.1, .5, 0.75, 1, 1.25]:
+        sum_dict['month'] = sum_dict['month'] + (range(1,13) * 3)
+        sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 36
+        sum_dict['label'] = sum_dict['label'] + ['new_growth'] * 12 + \
+                                                ['total_biomass'] * 12 + \
+                                                ['perc_new_growth'] * 12
+        herb_csv = os.path.join(herb_dir, 'cattle_%s.csv' % str(sd))
+        outdir = os.path.join(outer_out_dir, 'cattle_%s' % str(sd))
+        # if not os.path.exists(outdir):
+            # launch_model(herb_csv, outdir)
+        new_growth, biomass_t, perc_new_growth = calculate_new_growth(
+                                                       outdir, grass_csv, year)
+        sum_dict['biomass'] = sum_dict['biomass'] + new_growth + biomass_t + \
+                                                    perc_new_growth
     sum_df = pandas.DataFrame(sum_dict)
     sum_df.to_csv(save_as, index=False)
     
