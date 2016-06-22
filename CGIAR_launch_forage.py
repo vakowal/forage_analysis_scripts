@@ -78,7 +78,7 @@ def launch_baseline():
                     
 def launch_runs():
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs"
-    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/test_5.9.16"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/runs_5.31.16"
     forage_args = {
         'latitude': -12.55,
         'prop_legume': 0.0,
@@ -99,8 +99,9 @@ def launch_runs():
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 1,
+        'diet_verbose': "",
     }
-    for subbasin in range(1, 16):
+    for subbasin in [4, 15]:  # range(1, 16):
         for anim_type in ['cow', 'sheep', 'camelid']:
             for sd_level in ['low', 'med', 'high']:
                 forage_args['mgmt_threshold'] = 0.1
@@ -120,7 +121,10 @@ def launch_runs():
                 forage_args['herbivore_csv'] = herbivore_csv
                 forage_args['outdir'] = out_dir
                 if not os.path.exists(out_dir):
-                    forage.execute(forage_args)
+                    try:
+                        forage.execute(forage_args)
+                    except:
+                        continue
                         
 if __name__ == "__main__":
     launch_runs()

@@ -227,30 +227,6 @@ def different_diets(available_forage, herbivore_csv, weight_1):
     delta_W_step = forage_u.convert_daily_to_step(delta_W)
     herb_class.update(delta_weight=delta_W_step,
                       delta_time=forage_u.find_days_per_step())
-
-def calc_diet_segregation(diet_dict):
-    """Calculate the segregation between diets of two herbivores. This is
-    calculated as the average difference in percentage of the diet comprised of
-    each forage type.  So a value of 1 means they eat completely separate grass
-    types. A value of 0 means they select grass types in identical
-    proportions."""
-    
-    perc_lists = []
-    for hclass_label in diet_dict.keys():
-        percent_consumed = []
-        total_consumed = 0.
-        for grass_label in diet_dict[hclass_label].intake.keys():
-            total_consumed = total_consumed + \
-                                    diet_dict[hclass_label].intake[grass_label]
-        for grass_label in diet_dict[hclass_label].intake.keys():
-            percent_consumed.append(
-                    diet_dict[hclass_label].intake[grass_label]/total_consumed)
-        perc_lists.append(percent_consumed)
-    assert len(perc_lists) == 2
-    assert len(perc_lists[0]) == len(perc_lists[1])
-    diff_list = [abs(i - j) for i, j in zip(perc_lists[0], perc_lists[1])]
-    ave_diff = sum(diff_list) / len(diff_list)
-    return ave_diff                        
     
 def run_test(save_as):
     """Change forage characteristics, change herbivore characteristics,
@@ -312,7 +288,7 @@ def launch_model(herb_csv, outdir):
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 0,
-        'diet_verbose': 0,
+        'diet_verbose': 1,
     }
     forage.execute(forage_args)
 
@@ -327,10 +303,10 @@ def change_herbivore_weights(herb_csv, weight):
     df = df.set_index('label')
     df.to_csv(herb_csv)
 
-def launch_model_and_summarize_plant_composition():    
-    """Run the model for a series of weights and compare plant composition
-    resulting from those weights.  Does variation in diet selection between
-    herbivores drive differences in plant community composition?"""
+def summarize_plant_composition(outer_dir, save_as, weight_list):    
+    """Compare plant composition from several model runs.  Does variation in
+    diet selection between herbivores drive differences in plant community
+    composition?"""
     
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\6.21.16"
     herb_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/facilitation_exploration/herbs_diet_illustration.csv"
@@ -396,6 +372,5 @@ if __name__ == "__main__":
     # for herb in ['herb1_0.2', 'herb1_2_0.3', 'herb1_2_0.2']:
         # herb_csv = os.path.join(input_dir, '%s.csv' % herb)
         # outdir = os.path.join(outer_out_dir, '%s_grass1_grass2' % herb)
-        # launch_model(herb_csv, outdir)
-        
+        # launch_model(herb_csv, outdir)   
     launch_model_and_summarize_plant_composition()
