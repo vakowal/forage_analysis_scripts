@@ -308,7 +308,7 @@ def launch_model(herb_csv, outdir):
         'user_define_protein': 0,
         'user_define_digestibility': 0,
         'herbivore_csv': herb_csv,
-        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/C_dactylon_T_triandra.csv",
+        'grass_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/facilitation_exploration/grasses_diet_illustration.csv",
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 0,
@@ -332,21 +332,23 @@ def launch_model_and_summarize_plant_composition():
     resulting from those weights.  Does variation in diet selection between
     herbivores drive differences in plant community composition?"""
     
-    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs"
-    herb_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbs_diet_illustration.csv"
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs\6.21.16"
+    herb_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/facilitation_exploration/herbs_diet_illustration.csv"
     weight_list = [0, 1, 10]
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\asymmetric_weight_effects_grass_proportions.csv"
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\asymmetric_weight_effects_grass_proportions_6.21.16.csv"
     for weight in weight_list:
         outdir = os.path.join(outer_dir, 'outputs_asymmetric_w%d' % weight)
         change_herbivore_weights(herb_csv, weight)
         launch_model(herb_csv, outdir)
     summary_dict = {'weight': [],
                     'step': [],
+                    'g1_prop': [],
+                    'g2_prop': [],
                     'diff_abs': [],
                     'diff_proportion': [],
                     }
     for weight in weight_list:
-        sum_csv = os.path.join(outer_dir, 'outputs_w%d' % weight,
+        sum_csv = os.path.join(outer_dir, 'outputs_asymmetric_w%d' % weight,
                                'summary_results.csv')
         df = pandas.read_csv(sum_csv)
         sum_g1 = df.grass_1_green_kgha + df.grass_1_dead_kgha
@@ -354,6 +356,8 @@ def launch_model_and_summarize_plant_composition():
         total_g = sum_g1 + sum_g2
         diff_abs = abs(sum_g1 - sum_g2)
         diff_prop = abs((sum_g1 / total_g) - (sum_g2 / total_g))
+        summary_dict['g1_prop'] += (sum_g1 / total_g).tolist()
+        summary_dict['g2_prop'] += (sum_g2 / total_g).tolist()
         summary_dict['diff_abs'] += diff_abs.tolist()
         summary_dict['diff_proportion'] += diff_prop.tolist()
         summary_dict['step'] += df.step.tolist()
@@ -387,4 +391,11 @@ def stocking_density_percent_new_growth_test():
     sum_df.to_csv(save_as, index=False)
     
 if __name__ == "__main__":
-    stocking_density_percent_new_growth_test()
+    # input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\facilitation_exploration"
+    # outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\facilitation_exploration\model_runs"
+    # for herb in ['herb1_0.2', 'herb1_2_0.3', 'herb1_2_0.2']:
+        # herb_csv = os.path.join(input_dir, '%s.csv' % herb)
+        # outdir = os.path.join(outer_out_dir, '%s_grass1_grass2' % herb)
+        # launch_model(herb_csv, outdir)
+        
+    launch_model_and_summarize_plant_composition()
