@@ -41,6 +41,42 @@ def calibrate():
         # if not os.path.exists(out_dir):
         forage.execute(forage_args)
 
+def launch_biomass_calibration():
+    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs/plant_calibration"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/plant_calibration"
+    forage_args = {
+        'latitude': -12.55,
+        'prop_legume': 0.0,
+        'steepness': 1.,
+        'DOY': 1,
+        'start_year': 1993,
+        'start_month': 1,
+        'num_months': 282,
+        'mgmt_threshold': 0.1,
+        'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+        'outdir': "",
+        'template_level': 'GL',
+        'fix_file': 'gfix.100',
+        'user_define_protein': 1,
+        'user_define_digestibility': 1,
+        'herbivore_csv': "",
+        'grass_csv': "",
+        'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+        'input_dir': input_dir,
+        'restart_yearly': 1,
+        'diet_verbose': "",
+    }
+    for subbasin in [5, 7]:
+        grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' %
+                                 subbasin)
+        # herbivore_csv = os.path.join(input_dir, 'zero_sd.csv')
+        forage_args['grass_csv'] = grass_csv
+        forage_args['herbivore_csv'] = None
+        out_dir = os.path.join(outer_dir, 's%d_zero_sd' % subbasin)
+        forage_args['outdir'] = out_dir
+        #if not os.path.exists(out_dir):
+        forage.execute(forage_args)
+        
 def launch_baseline():
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs"
     outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/raw_5.2.16"
@@ -64,6 +100,7 @@ def launch_baseline():
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
         'restart_yearly': 1,
+        'diet_verbose': "",
     }
     for subbasin in range(1, 15):
         grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' %
@@ -127,4 +164,4 @@ def launch_runs():
                         continue
                         
 if __name__ == "__main__":
-    launch_runs()
+    launch_biomass_calibration()
