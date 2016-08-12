@@ -78,8 +78,7 @@ if __name__ == "__main__":
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs/animal_calibration"
     sum_dict = {'duration': [], 'gain_kg': [], 'grz_months': [],
                 'total_biomass': [], 'avg_biomass': [], 'subbasin': []}
-    # herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_inputs\animal_calibration\cow_calib.csv"
-    herb_csv = "C:/Users/Ginger/Desktop/cow_half_low_sd.csv"
+    herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_inputs\animal_calibration\cow_calib.csv"
     total_mos = 24
     full = range(0, total_mos)
     for sbasin in xrange(1, 15):
@@ -89,6 +88,7 @@ if __name__ == "__main__":
             for grz_months in [p1, p2, full]:
                 if grz_months == full:
                     duration = total_mos
+                    herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_inputs\animal_calibration\cow_half_low_sd.csv"
                 outdir = os.path.join(outer_dir, 'raw_results', (
                                       '_'.join(str(e) for e in grz_months) + 
                                       "_sub%s" % sbasin))
@@ -112,8 +112,3 @@ if __name__ == "__main__":
         df.to_csv(os.path.join( outer_dir, "comparison_8.9.16.csv"), index=False)
     results_dir = os.path.join(outer_dir, 'raw_results')
     erase_intermediate_files(results_dir)
-    # full = range(0, 24)
-    # herb_csv = "C:/Users/Ginger/Desktop/cow_half_low_sd.csv"
-    # outdir = os.path.join(outer_dir, 'raw_results',
-                              # '_'.join(str(e) for e in full))
-    # launch_model(full, outdir, herb_csv)
