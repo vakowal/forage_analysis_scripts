@@ -164,10 +164,9 @@ def summarize_results():
     save_as = os.path.join(outer_dir, 'run_summary.csv')
     df.to_csv(save_as, index=False)
 
-def launch_model(outdir, herb_csv, grass_csv, grz_months=None):
+def launch_model(input_dir, outdir, herb_csv, grass_csv, grz_months=None):
     """Inputs for the forage model in Peru"""
     
-    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs/animal_calibration"
     forage_args = {
         'latitude': -12.55,
         'prop_legume': 0.0,
@@ -175,8 +174,8 @@ def launch_model(outdir, herb_csv, grass_csv, grz_months=None):
         'DOY': 1,
         'start_year': 1993,
         'start_month': 1,
-        'num_months': 24,
-        'mgmt_threshold': 0.1,
+        'num_months': 204,
+        'mgmt_threshold': 0.5,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
         'outdir': outdir,
         'template_level': 'GH',
@@ -187,8 +186,8 @@ def launch_model(outdir, herb_csv, grass_csv, grz_months=None):
         'grass_csv': grass_csv,
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
         'input_dir': input_dir,
-        'diet_verbose': 1,
-        'restart_yearly': 0,
+        'diet_verbose': 0,
+        'restart_yearly': 1,
         'restart_monthly': 1,
         'grz_months': grz_months,
     }
@@ -212,49 +211,98 @@ def generate_grz_month_pairs(duration, total_mos):  # , start_month):
     p2.sort()
     return p1, p2
 
+def collect_rotation_results():
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/rotation_high_sd"
+    sum_dict = {'duration': [], 'avg_gain_kg': [], 'grz_schedule': [],
+                'avg_biomass': [], 'subbasin': [], 'animal_type': [],
+                'failed': []}
+    total_mos = 204
+    sd_level = 'high'
+    for anim_type in ['cow', 'sheep', 'camelid']:
+        for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
+            for duration in [1, 2, 3, 4, 6, total_mos]:
+                for grz_str in ['p1', 'p2', 'full']:
+                    sum_csv = os.path.join(outer_dir, 'raw_results',
+                                          '%s_%s_dur%d_%s_sub%s' % (
+                                          anim_type, sd_level, duration,
+                                          grz_str, sbasin),
+                                          'summary_results.csv')
+                    if not os.path.exists(sum_csv):
+                        continue
+                    sum_df = pandas.read_csv(sum_csv)
+                    if len(sum_df) < num_months:
+                        failed = 1
+                    else:
+                        failed = 0
+                    total_gain = sum_df.sum()['%s_gain_kg' % anim_type]
+                    if grz_str == 'full':
+                        avg_gain = total_gain / float(total_mos)
+                    else:
+                        avg_gain = total_gain / (float(total_mos) / 2)
+                    sum_biomass = sum_df['sub_%d_dead_kgha' % sbasin] + \
+                                    sum_df['sub_%d_green_kgha' % sbasin]
+                    mean_biomass = sum_biomass.mean()
+                    sum_dict['duration'].append(duration)
+                    sum_dict['grz_schedule'].append(grz_str)
+                    sum_dict['avg_gain_kg'].append(avg_gain)
+                    sum_dict['avg_biomass'].append(mean_biomass)
+                    sum_dict['subbasin'].append(sbasin)
+                    sum_dict['animal_type'].append(anim_type)
+                    sum_dict['failed'].append(failed)
+    df = pandas.DataFrame(sum_dict)
+    df.to_csv(os.path.join(outer_dir, "comparison_8.17.16.csv"), index=False)
+
 def test_rotation():
-    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/test_rotation"
-    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs/animal_calibration"
-    sum_dict = {'duration': [], 'gain_kg': [], 'grz_months': [],
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/rotation_high_sd"
+    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs"
+    sum_dict = {'duration': [], 'avg_gain_kg': [], 'grz_months': [],
                 'total_biomass': [], 'avg_biomass': [], 'subbasin': []}
-    herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_inputs\animal_calibration\cow_calib.csv"
-    total_mos = 24
+    total_mos = 204
     full = range(0, total_mos)
-    for sbasin in xrange(1, 15):
-        grass_csv = os.path.join(input_dir, "Pajonal_%d_calib.csv" % sbasin)
-        for duration in [1, 2, 3, 4, 6]:
-            p1, p2 = generate_grz_month_pairs(duration, total_mos)
-            for grz_months in [p1, p2, full]:
-                if grz_months == full:
-                    duration = total_mos
-                    herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_inputs\animal_calibration\cow_half_low_sd.csv"
-                outdir = os.path.join(outer_dir, 'raw_results', (
-                                      '_'.join(str(e) for e in grz_months) + 
-                                      "_sub%s" % sbasin))
-                if not os.path.exists(outdir):
-                    launch_model(input_dir, outdir, herb_csv, grass_csv,
-                                 grz_months)
-                sum_csv = os.path.join(outdir, 'summary_results.csv')
-                sum_df = pandas.read_csv(sum_csv)
-                total_gain = sum_df.sum().cow_gain_kg
-                sum_biomass = sum_df['sub_%d_calib_dead_kgha' % sbasin] + \
-                                sum_df['sub_%d_calib_green_kgha' % sbasin]
-                total_biomass = sum_df.sum()['sub_%d_calib_dead_kgha' % sbasin] + \
-                               sum_df.sum()['sub_%d_calib_green_kgha' % sbasin]
-                mean_biomass = sum_biomass.mean()
-                sum_dict['duration'].append(duration)
-                sum_dict['grz_months'].append(grz_months)
-                sum_dict['gain_kg'].append(total_gain)
-                sum_dict['total_biomass'].append(total_biomass)
-                sum_dict['avg_biomass'].append(mean_biomass)
-                sum_dict['subbasin'].append(sbasin)
-        df = pandas.DataFrame(sum_dict)
-        df.to_csv(os.path.join( outer_dir, "comparison_8.9.16.csv"), index=False)
-    results_dir = os.path.join(outer_dir, 'raw_results')
-    erase_intermediate_files(results_dir)
+    sd_level = 'high'
+    for anim_type in ['cow', 'sheep', 'camelid']:
+        herb_csv = os.path.join(input_dir, anim_type + '_' +
+                                                 sd_level + '_sd.csv')
+        for sbasin in [2, 3, 4, 5, 6, 7, 9]:
+            grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' % sbasin)
+            for duration in [1, 2, 3, 4, 6]:
+                p1, p2 = generate_grz_month_pairs(duration, total_mos)
+                for grz_months in [p1, p2, full]:
+                    if grz_months == full:
+                        duration = total_mos
+                    if grz_months == p1:
+                        grz_str = 'p1'
+                    elif grz_months == p2:
+                        grz_str = 'p2'
+                    elif grz_months == full:
+                        grz_str = 'full'
+                    outdir = os.path.join(outer_dir, 'raw_results',
+                                          '%s_%s_dur%d_%s_sub%s' % (
+                                          anim_type, sd_level, duration,
+                                          grz_str, sbasin))
+                    if not os.path.exists(outdir):
+                        try:
+                            launch_model(input_dir, outdir, herb_csv, grass_csv,
+                                         grz_months)
+                        except:
+                            continue
+                    erase_intermediate_files(os.path.join(
+                                                     outer_dir, 'raw_results'))
+                    
+
+def identify_failed_simulations(outer_dir, num_months):
+    failed = []
+    for folder in os.listdir(outer_dir):
+        sum_csv = os.path.join(outer_dir, folder, "summary_results.csv")
+        sum_df = pandas.read_csv(sum_csv)
+        if len(sum_df) < num_months:
+            failed.append(folder)
+    print "the following runs failed: "
+    print failed
 
 if __name__ == "__main__":
-    launch_biomass_calibration()
-    summarize_results()
-    # outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\plant_calibration\raw_results"
-    # erase_intermediate_files(outer_dir)
+    test_rotation()
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\rotation_high_sd\raw_results"
+    num_months = 204
+    # identify_failed_simulations(outer_dir, num_months)
+    collect_rotation_results()
