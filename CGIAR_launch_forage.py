@@ -192,7 +192,7 @@ def rotation_marginal_value_table():
     sd_df = pandas.read_csv(sd_table)
     marginal_df = {'subbasin': [], 'animal': [], 'density': [],
                    'perc_gain': [], 'total_delta_weight_kg': []}
-    time_series_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_8.19.16"
+    time_series_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_8.25.16"
     for anim_type in ['cow', 'sheep', 'camelid']:
         for sd_level in ['high', 'low', 'ighrot', 'lowrot']:
             for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:               
@@ -207,7 +207,7 @@ def rotation_marginal_value_table():
                 if sd_level == 'ighrot' or sd_level == 'high':
                     sd_str = 'rechigh'
                 if sd_level == 'lowrot' or sd_level == 'low':
-                    sd_str = 'low'
+                    sd_str = 'reclow'
                 density = sd_df.loc[sd_df['animal_level'] == (
                       '%s_%s' % (anim_type, sd_str))].stocking_density
                 start_wt = sum_df.iloc[0]['%s_kg' % anim_type] - \
@@ -221,7 +221,7 @@ def rotation_marginal_value_table():
                 marginal_df['total_delta_weight_kg'].append(
                                                   avg_yearly_gain_herd)
     df = pandas.DataFrame(marginal_df)
-    marginal_table_path = "C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\marginal_table_8.22.16.csv"
+    marginal_table_path = "C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\marginal_table_8.25.16.csv"
     df.to_csv(marginal_table_path)
                 
 def collect_rotation_results():
@@ -230,7 +230,7 @@ def collect_rotation_results():
                 'avg_biomass': [], 'subbasin': [], 'animal_type': [],
                 'failed': [], 'avg_yearly_gain': [], 'sd_level': []}
     total_mos = 204
-    for sd_level in ['rechigh', 'low']:
+    for sd_level in ['rechigh', 'reclow']:
         for anim_type in ['cow', 'sheep', 'camelid']:
             for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
                 for duration in [1, 2, 3, 4, 6, total_mos]:
@@ -269,7 +269,7 @@ def collect_rotation_results():
                         sum_dict['avg_yearly_gain'].append(avg_yearly_gain)
                         sum_dict['sd_level'].append(sd_level)
     df = pandas.DataFrame(sum_dict)
-    df.to_csv(os.path.join(outer_dir, "comparison_8.22.16.csv"), index=False)
+    df.to_csv(os.path.join(outer_dir, "comparison_8.25.16.csv"), index=False)
 
 def move_summary_files():
     outerdir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/rotation_high_sd/raw_results"
@@ -280,29 +280,56 @@ def move_summary_files():
         if elements[3] == 'full':
             summary_file = os.path.join(outerdir, folder,
                                         "summary_results.csv")
-            if elements[1] == 'rechigh':
+            if elements[1] == 'reclow':
                 elements[1] = 'high'
             new_str = "s%s_%s_%s" % (elements[4][-1:], elements[0],
                                      elements[1])
             new_path = os.path.join(newdir, new_str + ".csv")
-        # if os.path.isfile(new_path):
-            # continue
+        if os.path.isfile(new_path):
+            continue
         else:
             try:
                 shutil.copyfile(summary_file, new_path)
             except IOError:
                 continue
 
+def calc_SWAT_inputs():
+    """Calculate input management parameters for SWAT from biomass time
+    series."""
+    
+    biomass_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_8.25.16"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results"
+    
+    sum_dict = {'subbasin': [], 'animal': [], 'intensity': [],
+                'biomass_consumed': [], 'manure_kg': []}
+    for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
+        for anim_type in ['cow', 'sheep', 'camelid']:
+            for sd_level in ['low', 'high']:
+                filename = 's%s_%s_%s.csv' % (sbasin, anim_type, sd_level)
+                sum_df = pandas.read_csv(os.path.join(biomass_dir, filename))
+                grouped = sum_df.groupby('year')
+                avg_yearly_offtake = (grouped.sum()['total_offtake']).mean()
+                manure_kg = 2.27 * 0.2 * (avg_yearly_offtake / 2.5)
+                sum_dict['subbasin'].append(sbasin)
+                sum_dict['animal'].append(anim_type[:3])
+                sum_dict['intensity'].append(sd_level[-3:])
+                sum_dict['biomass_consumed'].append(avg_yearly_offtake)
+                sum_dict['manure_kg'].append(manure_kg)
+    df = pandas.DataFrame(sum_dict)
+    df = df[['subbasin', 'animal', 'intensity', 'biomass_consumed',
+             'manure_kg']]
+    df.to_csv(os.path.join(out_dir, "SWAT_inputs_8.29.16.csv"), index=False)            
+
 def calculate_rotated_time_series():
     """Make biomass time series for Perrine by averaging two rotated summary
     results files, those pertaining to different rotation schedules but with
     otherwise identical inputs."""
     
-    time_series_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_8.19.16"
+    time_series_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_8.25.16"
     outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/rotation_high_sd"
     total_mos = 204
     duration = 4
-    for sd_level in ['rechigh', 'low']:
+    for sd_level in ['reclow']:  # 'rechigh', 'low']:
         for anim_type in ['cow', 'sheep', 'camelid']:
             for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
                 p1_csv = os.path.join(outer_dir, 'raw_results',
@@ -314,11 +341,11 @@ def calculate_rotated_time_series():
                                       anim_type, sd_level, duration, sbasin),
                                       'summary_results.csv')
                 if not os.path.exists(p1_csv) or not os.path.exists(p2_csv):
-                    continue
+                    import pdb; pdb.set_trace()
                 sum_p1 = pandas.read_csv(p1_csv, index_col=0)
                 sum_p2 = pandas.read_csv(p2_csv, index_col=0)
                 if len(sum_p1) < total_mos or len(sum_p2) < total_mos:
-                    continue
+                    raise Exception
                 ### calculate average
                 ave_df = sum_p1.copy()
                 for ci in [0, 1, 2, 3, 6, 7, 8]:
@@ -366,9 +393,9 @@ def test_rotation():
     duration = 4
     p1, p2 = generate_grz_month_pairs(duration, total_mos)
     for anim_type in ['cow', 'sheep', 'camelid']:
-        for sbasin in [2, 4, 5, 6, 7, 9]:  #, 1, 3:
+        for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:  #, 1, 3:
             grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' % sbasin)
-            for sd_level in ['rechigh', 'low']:
+            for sd_level in ['reclow']:  # , 'rechigh']:
                 herb_csv = os.path.join(input_dir, anim_type + '_' +
                                                  sd_level + '_sd.csv')
                 for grz_months in [p1, p2, full]:
@@ -386,11 +413,11 @@ def test_rotation():
                                           '%s_%s_dur%d_%s_sub%s' % (
                                           anim_type, sd_level, dur,
                                           grz_str, sbasin))
-                    # if not os.path.exists(outdir):
-                    sum_csv = os.path.join(outdir, "summary_results.csv")
-                    sum_df = pandas.read_csv(sum_csv)
-                    if len(sum_df) < total_mos:
-                        forage_args['mgmt_threshold'] = 0.3
+                    if not os.path.exists(outdir):
+                    # sum_csv = os.path.join(outdir, "summary_results.csv")
+                    # sum_df = pandas.read_csv(sum_csv)
+                    # if len(sum_df) < total_mos:
+                        # forage_args['mgmt_threshold'] = 0.3
                         forage_args['outdir'] = outdir
                         forage_args['herbivore_csv'] = herb_csv
                         forage_args['grass_csv'] = grass_csv
@@ -399,16 +426,18 @@ def test_rotation():
                         try:
                             forage.execute(forage_args)
                         except:
-                            import pdb; pdb.set_trace()
-                            # continue
-                    erase_intermediate_files(os.path.join(
-                                                     outer_dir, 'raw_results'))
+                            continue
+                erase_intermediate_files(os.path.join(
+                                                 outer_dir, 'raw_results'))
                     
 
 def identify_failed_simulations(outer_dir, num_months):
     failed = []
     for folder in os.listdir(outer_dir):
         sum_csv = os.path.join(outer_dir, folder, "summary_results.csv")
+        if not os.path.exists(sum_csv):
+            failed.append(folder)
+            continue
         sum_df = pandas.read_csv(sum_csv)
         if len(sum_df) < num_months:
             failed.append(folder)
@@ -416,8 +445,13 @@ def identify_failed_simulations(outer_dir, num_months):
     print failed
 
 if __name__ == "__main__":
-    test_rotation()
+    # test_rotation()
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\rotation_high_sd\raw_results"
     num_months = 204
     # identify_failed_simulations(outer_dir, num_months)
-    collect_rotation_results()
+    # collect_rotation_results()
+    # identify_failed_simulations(outer_dir, num_months)
+    # calculate_rotated_time_series()
+    # move_summary_files()
+    # rotation_marginal_value_table()
+    calc_SWAT_inputs()
