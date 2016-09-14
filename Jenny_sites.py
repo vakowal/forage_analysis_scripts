@@ -41,6 +41,8 @@ def split_hist_sch():
                     line = source.next()
                 while ', exclosure' not in line:
                     line = source.next()
+                newline = 'Year Month Option\r\n'
+                extend.write(newline)
                 newline = '1             Block # empirical weather, exclosure\r\n'
                 extend.write(newline)
                 line = source.next()
@@ -65,12 +67,11 @@ def split_hist_sch():
     for row in xrange(len(site_df)):
         site_name = site_df.iloc[row].site
         weather_stn = '{}.wth'.format(site_df.iloc[row].closest_weather)
-        orig_sch = os.path.join(input_dir, '%s.sch' % site_name)
-        orig_sch_copy = os.path.join(input_dir, '%s_orig.sch' % site_name)
-        shutil.copyfile(orig_sch, orig_sch_copy)
+        e_sch = os.path.join(input_dir, '%s.sch' % site_name)
+        orig_sch = os.path.join(input_dir, '%s_orig.sch' % site_name)
         hist_file = os.path.join(input_dir, '%s_hist.sch' % site_name)
-        make_hist(orig_sch_copy, hist_file)
-        make_extend(orig_sch_copy, orig_sch, weather_stn)
+        # make_hist(orig_sch, hist_file)
+        make_extend(orig_sch, e_sch, weather_stn)
     
 def PDM_to_g_m2(PDM):
     """Convert PDM measurement to biomass (grams per square m) following
@@ -96,13 +97,16 @@ def edit_site_file(template, inputs_dict, save_as):
                     item = '{:0.12f}'.format(inputs_dict['longitude'])[:7]
                     newline = '%s           \'SITLNG\'\r\n' % item
                 elif '  \'SAND' in line:
-                    item = '{:0.12f}'.format(inputs_dict['sand'])[:7]
+                    num = inputs_dict['sand'] / 100.0
+                    item = '{:0.12f}'.format(num)[:7]
                     newline = '%s           \'SAND\'\r\n' % item
                 elif '  \'SILT' in line:
-                    item = '{:0.12f}'.format(inputs_dict['silt'])[:7]
+                    num = inputs_dict['silt'] / 100.0
+                    item = '{:0.12f}'.format(num)[:7]
                     newline = '%s           \'SILT\'\r\n' % item
                 elif '  \'CLAY' in line:
-                    item = '{:0.12f}'.format(inputs_dict['clay'])[:7]
+                    num = inputs_dict['clay'] / 100.0
+                    item = '{:0.12f}'.format(num)[:7]
                     newline = '%s           \'CLAY\'\r\n' % item
                 elif '  \'BULKD' in line:
                     item = '{:0.12f}'.format(inputs_dict['bldens'])[:7]
@@ -133,7 +137,7 @@ def edit_sch_file(template, site_name, weather_file, save_as):
                 newfile.write(newline)
     shutil.copyfile(abs_path, save_as)
     os.remove(abs_path)
-  
+   
 def generate_inputs():
     date_dict = {2012: 2012.50, 2013: 2013.50, 2014: 2014.08}
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\jenny_site_summary_open.csv"
@@ -156,7 +160,7 @@ def generate_inputs():
         
         site_filename = os.path.join(input_dir, '%s.100' %
                                      inputs_dict['site_name'])
-        # edit_site_file(template_site, inputs_dict, site_filename)
+        edit_site_file(template_site, inputs_dict, site_filename)
         weather_stn = '{}.wth'.format(site_df.iloc[row].closest_weather)
         sch_filename = os.path.join(input_dir, '%s.sch' % 
                                     inputs_dict['site_name'])
@@ -180,10 +184,11 @@ def calc_management():
     vary = 'both' # 'schedule', 'intensity', 'both'
     live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
     threshold = 15.0  # must match biomass within this many g per sq m
-    max_iterations = 3  # number of times to try
+    max_iterations = 40  # number of times to try
     fix_file = 'drytrpfi.100'
 
     site_list = generate_inputs()
+    site_list = site_list[:5]
     for site in site_list:
         out_dir_site = os.path.join(out_dir, site['name'])
         if not os.path.exists(out_dir_site):
@@ -194,4 +199,5 @@ def calc_management():
                                            max_iterations)
                                   
 if __name__ == "__main__":
-    split_hist_sch()
+    # generate_inputs()
+    calc_management()
