@@ -3,7 +3,6 @@ import math
 import csv
 import os
 import sys
-from subprocess import Popen
 import shutil
 sys.path.append(
  'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
@@ -18,6 +17,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     should be specified as a "CENTURY date": 2012.00 is December of 2011;
     2012.08 is January of 2012, etc. Two decimal points."""
     
+    cent.set_century_directory(century_dir)
     empirical_biomass = site['biomass']
     empirical_date = site['date']
     schedule = site['name'] + '.sch'
@@ -25,7 +25,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     site_file, weather_file = cent.get_site_weather_files(schedule_file,
                                                           input_dir)
     graz_file = os.path.join(century_dir, "graz.100")
-    output = site['name'] + '_mod-manag'
+    output = site['name']  # + '_mod-manag'
           
     # check that last block in schedule file includes >= n_years before
     # empirical_date
@@ -64,8 +64,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     # run CENTURY for spin-up                           
     hist_bat_run = os.path.join(century_dir, (site['name'] + '_hist.bat'))
     century_bat_run = os.path.join(century_dir, (site['name'] + '.bat'))
-    p = Popen(["cmd.exe", "/c " + hist_bat_run], cwd=century_dir)
-    stdout, stderr = p.communicate()
+    cent.launch_CENTURY_subprocess(hist_bat_run)
 
     # save copies of CENTURY outputs, but remove from CENTURY dir
     intermediate_dir = os.path.join(out_dir, 'CENTURY_outputs_spin_up')
@@ -88,9 +87,8 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                 row.append(empirical_biomass)
                 
                 # call CENTURY from the batch file
-                p = Popen(["cmd.exe", "/c " + century_bat_run],
-                          cwd=century_dir)
-                p.wait()
+                cent.launch_CENTURY_subprocess(century_bat_run)
+
                 intermediate_dir = os.path.join(out_dir,
                                      'CENTURY_outputs_iteration%d' % iter)
                 if not os.path.exists(intermediate_dir):
@@ -99,10 +97,6 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                     shutil.copyfile(os.path.join(century_dir, file),
                                     os.path.join(intermediate_dir, file))
                     os.remove(os.path.join(century_dir, file))
-            
-                # check that CENTURY completed successfully
-                output_log = os.path.join(intermediate_dir, output+'_log.txt')
-                cent.check_CENTURY_log(output_log)
 
                 # get simulated biomass
                 output_file = os.path.join(intermediate_dir, output_lis)
@@ -215,6 +209,7 @@ def opc_weather_station_sites():
     rongai = {'name': 'Rongai', 'biomass': 79.84, 'date': 2015.92}
 
     site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
+    site_list = [kamok]
     for site in site_list:
         out_dir_site = os.path.join(out_dir, site['name'])
         if not os.path.exists(out_dir_site):
@@ -222,3 +217,6 @@ def opc_weather_station_sites():
         back_calculate_management(site, input_dir, century_dir, out_dir_site,
                                   fix_file, n_years, vary, live_or_total,
                                   threshold, max_iterations)
+
+if __name__ == "__main__":
+    opc_weather_station_sites()
