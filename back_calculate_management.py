@@ -14,12 +14,16 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                               max_iterations):
     """Calculate grazing history at a site by adding or removing grazing events
     and modifying grazing intensity until an empirical biomass target is
-    reached."""
+    reached.  Biomass should be specified in g per square m.  Empirical date
+    should be specified as a "CENTURY date": 2012.00 is December of 2011;
+    2012.08 is January of 2012, etc. Two decimal points."""
     
     empirical_biomass = site['biomass']
     empirical_date = site['date']
     schedule = site['name'] + '.sch'
     schedule_file = os.path.join(input_dir, schedule)
+    site_file, weather_file = cent.get_site_weather_files(schedule_file,
+                                                          input_dir)
     graz_file = os.path.join(century_dir, "graz.100")
     output = site['name'] + '_mod-manag'
           
@@ -47,8 +51,6 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                        site['name'] + '_hist.lis']
     century_outputs = [output + '_log.txt', output + '.lis', output + '.bin']
     # move CENTURY run files to CENTURY dir
-    site_file = os.path.join(input_dir, site['name'] + '.100')
-    weather_file = os.path.join(input_dir, site['name'] + '.wth')
     e_schedule = os.path.join(input_dir, site['name'] + '.sch')
     h_schedule = os.path.join(input_dir, site['name'] + '_hist.sch')
     file_list = [hist_bat, extend_bat, e_schedule, h_schedule, site_file,
@@ -193,8 +195,8 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
             os.remove(file)
         os.remove(os.path.join(input_dir, 'sch_orig.sch'))
         os.remove(os.path.join(century_dir, site['name'] + '_hist.bin'))
-        
-if __name__ == "__main__":
+
+def opc_weather_station_sites():
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
     n_years = 1 # how many years to potentially manipulate?
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
