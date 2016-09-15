@@ -2,10 +2,14 @@
 # then back-calculate management regime and replicate caging
 
 import os
+import sys
 import shutil
 from tempfile import mkstemp
 import pandas
 import back_calculate_management as backcalc
+sys.path.append(
+ 'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+import forage_century_link_utils as cent
 
 def split_hist_sch():
     def make_hist(source_file, hist_file):
@@ -137,7 +141,14 @@ def edit_sch_file(template, site_name, weather_file, save_as):
                 newfile.write(newline)
     shutil.copyfile(abs_path, save_as)
     os.remove(abs_path)
-   
+
+def remove_grazing_after_empirical_date():
+    """Remove all scheduled grazing after the empirical measurement date, to
+    compare CENTURY outputs with "ungrazed" grass growth"""
+    # I ended up doing this manually. :( but don't forget it needs to be done
+    # if you ever regenerate schedule files for these sites.
+    pass
+    
 def generate_inputs():
     date_dict = {2012: 2012.50, 2013: 2013.50, 2014: 2014.08}
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\jenny_site_summary_open.csv"
@@ -160,7 +171,7 @@ def generate_inputs():
         
         site_filename = os.path.join(input_dir, '%s.100' %
                                      inputs_dict['site_name'])
-        edit_site_file(template_site, inputs_dict, site_filename)
+        # edit_site_file(template_site, inputs_dict, site_filename)
         weather_stn = '{}.wth'.format(site_df.iloc[row].closest_weather)
         sch_filename = os.path.join(input_dir, '%s.sch' % 
                                     inputs_dict['site_name'])
@@ -175,7 +186,54 @@ def generate_inputs():
                           'biomass': empirical_biomass,
                           'date': empirical_date})
     return site_list    
+
+def collect_results(save_as):
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\Comparisons_with_CENTURY\back_calc_mgmt_9.13.16"
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\jenny_site_summary_open.csv"
+    date_dict = {2012: 2012.50, 2013: 2013.50, 2014: 2014.08}
     
+    succeeded = 0
+    failed = []
+    sum_dict = {'site': [], 'date': [], 'biomass': [], 'sim_vs_emp': []}
+    site_df = pandas.read_csv(site_csv)
+    for row in xrange(len(site_df)):
+        year = site_df.iloc[row].year
+        emp_series = [PDM_to_g_m2(site_df.iloc[row]['week{}cage'.format(week)])
+                      for week in [0, 3, 6, 9]]
+        emp_dates = [date_dict[year] + x for x in [0, 0.0625, 0.125, 0.1875]]
+        site_name = site_df.iloc[row].site
+        result_csv = os.path.join(outerdir, site_name,
+                          'modify_management_summary_{}.csv'.format(site_name))
+        res_df = pandas.read_csv(result_csv)
+        diff = res_df.iloc[len(res_df) - 1].Simulated_biomass - \
+                           res_df.iloc[len(res_df) - 1].Empirical_biomass
+        if abs(float(diff)) <= 15.0:
+            succeeded += 1
+        else:
+            failed.append(site_name)
+        final_sim = int(res_df.iloc[len(res_df) - 1].Iteration)
+        output_file = os.path.join(outerdir, site_name,
+                               'CENTURY_outputs_iteration{}'.format(final_sim),
+                               '{}.lis'.format(site_name))
+        biomass_df = cent.read_CENTURY_outputs(output_file, year - 1, year + 1)
+        sim_months = [date_dict[year] + x for x in [0, 0.08, 0.17]]
+        if year == 2014:
+            sim_months[1] = 2014.17
+        sim_dat = biomass_df.loc[sim_months]
+        sim_series = sim_dat.aglivc + sim_dat.stdedc
+        
+        sum_dict['site'].extend([site_name] * 7)
+        sum_dict['biomass'].extend(emp_series)
+        sum_dict['sim_vs_emp'].extend(['empirical'] * 4)
+        sum_dict['date'].extend(emp_dates)
+        sum_dict['biomass'].extend(sim_series)
+        sum_dict['sim_vs_emp'].extend(['simulated'] * 3)
+        sum_dict['date'].extend(sim_series.index)
+    sum_df = pandas.DataFrame(sum_dict)
+    sum_df.to_csv(save_as)
+    print "{} sites succeeded".format(succeeded)
+    print "these sites failed: {}".format(failed)
+
 def calc_management():
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Jenny_sites"
     n_years = 2  # how many years to potentially manipulate?
@@ -188,11 +246,10 @@ def calc_management():
     fix_file = 'drytrpfi.100'
 
     site_list = generate_inputs()
-    site_list = site_list[:5]
     for site in site_list:
         out_dir_site = os.path.join(out_dir, site['name'])
         if not os.path.exists(out_dir_site):
-            os.makedirs(out_dir_site) 
+            os.makedirs(out_dir_site)
         backcalc.back_calculate_management(site, input_dir, century_dir,
                                            out_dir_site, fix_file, n_years,
                                            vary, live_or_total, threshold,
@@ -200,4 +257,6 @@ def calc_management():
                                   
 if __name__ == "__main__":
     # generate_inputs()
-    calc_management()
+    # calc_management()
+    save_as = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Jenny/Comparisons_with_CENTURY/back_calc_mgmt_9.13.16/comparison_summary.csv"
+    collect_results(save_as)
