@@ -3,7 +3,9 @@
 
 import os
 import sys
+import re
 import shutil
+import math
 from tempfile import mkstemp
 import pandas
 import back_calculate_management as backcalc
@@ -187,6 +189,117 @@ def generate_inputs():
                           'date': empirical_date})
     return site_list    
 
+def summarize_calc_schedules(save_as):
+    """summarize the grazing schedules that were calculated via the back-calc
+    management regime"""
+    
+    n_years = 2
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\Comparisons_with_CENTURY\back_calc_mgmt_9.13.16"
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\jenny_site_summary_open.csv"
+    date_dict = {2012: 2012.50, 2013: 2013.50, 2014: 2014.08}
+    starting_sch_dict = {2012: 14, 2013: 14, 2014: 12}  # number months with grazing scheduled initially
+    total_mos_dict = {2012: 30, 2013: 30, 2014: 25}
+
+    sum_dict = {'site': [], 'num_months': [], 'num_grazing_months': [],
+                'added_or_subtracted': [], 'succeeded': [],
+                'perc_live_removed': [], 'perc_dead_removed': []}
+    site_df = pandas.read_csv(site_csv)
+    for row in xrange(len(site_df)):
+        site_name = site_df.iloc[row].site
+        site_dir = os.path.join(outerdir, site_name)
+        result_csv = os.path.join(site_dir,
+                          'modify_management_summary_{}.csv'.format(site_name))
+        res_df = pandas.read_csv(result_csv)
+        diff = res_df.iloc[len(res_df) - 1].Simulated_biomass - \
+                           res_df.iloc[len(res_df) - 1].Empirical_biomass
+        if abs(float(diff)) <= 15.0:
+            sum_dict['succeeded'].append('succeeded')
+        else:
+            sum_dict['succeeded'].append('failed')
+        year = site_df.iloc[row].year
+        total_mos = total_mos_dict[year]
+        sch_files = [f for f in os.listdir(site_dir) if f.endswith('.sch')]
+        sch_iter_list = [int(re.search('{}_{}(.+?).sch'.format(site_name,
+                         site_name), f).group(1)) for f in sch_files]
+        if len(sch_iter_list) == 0:
+            sum_dict['added_or_subtracted'].append('same')
+            sum_dict['site'].append(site_name)
+            sum_dict['num_months'].append(total_mos)
+            sum_dict['num_grazing_months'].append(total_mos)
+            sum_dict['perc_live_removed'].append(0.1)
+            sum_dict['perc_dead_removed'].append(0.05)
+            continue
+        empirical_date = date_dict[year]
+        final_sch_iter = max(sch_iter_list)
+        final_sch = os.path.join(site_dir, '{}_{}{}.sch'.format(site_name,
+                                 site_name, final_sch_iter))
+        
+        # read schedule file, collect months where grazing was scheduled
+        schedule_df = cent.read_block_schedule(final_sch)
+        for i in range(0, schedule_df.shape[0]):
+            start_year = schedule_df.loc[i, 'block_start_year']
+            last_year = schedule_df.loc[i, 'block_end_year']
+            if empirical_date > start_year and empirical_date <= last_year:
+                break
+        relative_empirical_year = int(math.floor(empirical_date) -
+                                      start_year + 1)
+        empirical_month = int(round((empirical_date - float(math.floor(
+                                empirical_date))) * 12))
+        
+        # find months where grazing took place prior to empirical date
+        graz_schedule = cent.read_graz_level(final_sch)
+        block = graz_schedule.loc[(graz_schedule["block_end_year"] == 
+                                  last_year), ['relative_year', 'month',
+                                  'grazing_level']]
+        empirical_year = block.loc[(block['relative_year'] ==
+                                   relative_empirical_year), ]
+        empirical_year = empirical_year.loc[(empirical_year['month'] <=
+                                            empirical_month), ]
+        prev_year = block.loc[(block['relative_year'] <
+                              relative_empirical_year), ]
+        prev_year = prev_year.loc[(prev_year['relative_year'] >=
+                                  (relative_empirical_year - n_years)), ]
+        history = prev_year.append(empirical_year)
+        filled_history = cent.fill_schedule(history, relative_empirical_year -
+                                            n_years, relative_empirical_year,
+                                            empirical_month)
+        num_graz_mos = len(filled_history.loc[(filled_history[
+                                              'grazing_level'] != 'none'), ])
+        if num_graz_mos > starting_sch_dict[year]:
+            sum_dict['added_or_subtracted'].append('added')
+        elif num_graz_mos < starting_sch_dict[year]:
+            sum_dict['added_or_subtracted'].append('subtracted')
+        sum_dict['site'].append(site_name)
+        sum_dict['num_months'].append(total_mos)
+        sum_dict['num_grazing_months'].append(num_graz_mos)
+        flgrem = 0.1
+        fdgrem = 0.05
+        if num_graz_mos > starting_sch_dict[year]:
+            grz_files = [f for f in os.listdir(site_dir) if
+                         f.startswith('graz')]
+            if len(grz_files) > 0:
+                grz_iter_list = [int(re.search('graz_{}(.+?).100'.format(
+                                 site_name), f).group(1)) for f in grz_files]
+                final_iter = max(grz_iter_list)
+                final_grz = os.path.join(site_dir, 'graz_{}{}.100'.format(
+                                         site_name, final_iter))
+                with open(final_grz, 'rb') as old_file:
+                    for line in old_file:
+                        if 'GL    ' in line:
+                            line = old_file.next()
+                            if 'FLGREM' in line:
+                                flgrem = line[:8].strip()
+                                line = old_file.next()
+                            if 'FDGREM' in line:
+                                fdgrem = line[:8].strip()
+                            else:
+                                er = "Error: FLGREM expected"
+                                raise Exception(er)
+        sum_dict['perc_live_removed'].append(flgrem)
+        sum_dict['perc_dead_removed'].append(fdgrem)
+    sum_df = pandas.DataFrame(sum_dict)
+    sum_df.to_csv(save_as)
+        
 def collect_results(save_as):
     outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\Comparisons_with_CENTURY\back_calc_mgmt_9.13.16"
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Jenny\jenny_site_summary_open.csv"
@@ -258,5 +371,6 @@ def calc_management():
 if __name__ == "__main__":
     # generate_inputs()
     # calc_management()
-    save_as = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Jenny/Comparisons_with_CENTURY/back_calc_mgmt_9.13.16/comparison_summary.csv"
-    collect_results(save_as)
+    save_as = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Jenny/Comparisons_with_CENTURY/back_calc_mgmt_9.13.16/calculated_management_summary.csv"
+    # collect_results(save_as)
+    summarize_calc_schedules(save_as)
