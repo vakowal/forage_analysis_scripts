@@ -227,6 +227,18 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                        }
     missing_counts_sites = []
     GPS_data, metadata = read_data(GPS_datafile, gps_metadata_file)
+    
+    # calculate average herd composition, to be substituted when there is no
+    # record of the actual herd composition in the metadata file
+    meta_sub = metadata.loc[(metadata['Total'] > 0), ]
+    avg_bulls = meta_sub.Bulls.mean()
+    avg_cows = meta_sub.Cows.mean()
+    avg_steers = meta_sub.Steers.mean()
+    avg_heifers = meta_sub.Heifers.mean()
+    avg_steerheif = meta_sub['steer/heifer'].mean()
+    avg_weaners = meta_sub.Weaners.mean()
+    avg_calves = meta_sub.Calves.mean()
+    
     points_data = read_point_data(points_file)
     for v_row in xrange(len(points_data)):
         if points_data.iloc[v_row][x_field] is None or \
@@ -235,7 +247,8 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
         point_name = points_data.iloc[v_row].Name
         x1 = float(points_data.iloc[v_row][x_field])
         y1 = float(points_data.iloc[v_row][y_field])
-
+        
+        mr = 0
         match = find_matched_records(x1, y1, GPS_data, distance)
         if len(match) > 0:
             df_list = []
@@ -249,7 +262,11 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                              'steer/heifer': [],
                              'Weaners': [],
                              'Calves': [],
-                }
+                             'Area': [],
+                             'Boma_block': [],
+                             'Herd_type': [],
+                             'Abbrv': [],
+                            }
                 year = pd.to_datetime(date).year
                 one_day = match.loc[match['Date'] == date]  # for each day where a herd was recorded nearby
                 for unit in pd.unique(one_day.unit_no.ravel()):  # for each unit recorded in that day
@@ -273,36 +290,67 @@ def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                             record = record3
                         if len(record) > 1:
                             import pdb; pdb.set_trace()
+                        use_avg = 0
+                        missing_record = 0
                         if len(record) == 0:
                             missing_records['abbreviation'].append(abbrev)
                             missing_records['unit_no'].append(unit)
                             missing_records['rotation'].append(rotation)
                             missing_records['year'].append(year)
                             missing_records_sites.append(point_name)
-                            continue
-                        if record.iloc[0].Total is None:
+                            use_avg = 1
+                            missing_record = 1
+                        elif record.iloc[0].Total is None:
                             missing_counts['abbreviation'].append(abbrev)
                             missing_counts['unit_no'].append(unit)
                             missing_counts['rotation'].append(rotation)
                             missing_counts['year'].append(year)
                             missing_counts_sites.append(point_name)
-                            continue
-                        herd_dict['date'].append(date)
-                        herd_dict['unit'].append(unit)
-                        herd_dict['Bulls'].append(record.iloc[0].Bulls)
-                        herd_dict['Cows'].append(record.iloc[0].Cows)
-                        herd_dict['Steers'].append(record.iloc[0].Steers)
-                        herd_dict['Heifers'].append(record.iloc[0].
-                                                    Heifers)
-                        herd_dict['steer/heifer'].append(
-                                           record.iloc[0]['steer/heifer'])
-                        herd_dict['Weaners'].append(record.iloc[0].
-                                                    Weaners)
-                        herd_dict['Calves'].append(record.iloc[0].Calves)
+                            use_avg = 1
+                        if missing_record:
+                            herd_dict['Area'].append('NA{}'.format(mr))
+                            herd_dict['Boma_block'].append('NA{}'.format(mr))
+                            herd_dict['Herd_type'].append('NA{}'.format(mr))
+                            herd_dict['Abbrv'].append('NA{}'.format(mr))
+                            mr += 1
+                        else:
+                            herd_dict['Area'].append(record.iloc[0].Area)
+                            herd_dict['Boma_block'].append(
+                                                     record.iloc[0].Boma_block)
+                            herd_dict['Herd_type'].append(
+                                                   record.iloc[0]['Herd type'])
+                            herd_dict['Abbrv'].append(record.iloc[0].Abbrv)
+                        if use_avg:
+                            herd_dict['date'].append(date)
+                            herd_dict['unit'].append(unit)
+                            herd_dict['Bulls'].append(avg_bulls)
+                            herd_dict['Cows'].append(avg_cows)
+                            herd_dict['Steers'].append(avg_steers)
+                            herd_dict['Heifers'].append(avg_heifers)
+                            herd_dict['steer/heifer'].append(avg_steerheif)
+                            herd_dict['Weaners'].append(avg_weaners)
+                            herd_dict['Calves'].append(avg_calves)
+                        else:
+                            herd_dict['date'].append(date)
+                            herd_dict['unit'].append(unit)
+                            herd_dict['Bulls'].append(record.iloc[0].Bulls)
+                            herd_dict['Cows'].append(record.iloc[0].Cows)
+                            herd_dict['Steers'].append(record.iloc[0].Steers)
+                            herd_dict['Heifers'].append(record.iloc[0].
+                                                        Heifers)
+                            herd_dict['steer/heifer'].append(
+                                               record.iloc[0]['steer/heifer'])
+                            herd_dict['Weaners'].append(record.iloc[0].
+                                                        Weaners)
+                            herd_dict['Calves'].append(record.iloc[0].Calves)
                 date_df = pd.DataFrame(herd_dict)
                 # there may have been >1 recorder for one herd; check that we
                 # only count each herd once
-                date_df = date_df.drop_duplicates(['Calves', 'Cows', 'Steers'])
+                date_df = date_df.drop_duplicates(['Area', 'Boma_block',
+                                                  'Herd_type', 'Abbrv'])
+                date_df = date_df[['date', 'unit', 'Bulls', 'Cows', 'Steers',
+                                  'Heifers', 'steer/heifer', 'Weaners',
+                                  'Calves']]
                 if len(date_df) > 0:
                     df_list.append(date_df)
             if len(df_list) == 0:
@@ -444,16 +492,16 @@ def check_for_missing_records(GPS_datafile, gps_metadata_file, result_dir):
     
 if __name__ == "__main__":
     outerdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/2015'
-    GPS_data = combine_GPS_files(outerdir)
-    GPS_datafile = os.path.join(outerdir, "data_combined.csv")
-    GPS_data.to_csv(GPS_datafile)
-    points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
+    # GPS_data = combine_GPS_files(outerdir)
+    # points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
     # result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
-    result_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations'
+    result_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations_10.5.16'
     weather_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
     gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
     veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"
     distance = 2.
+    GPS_datafile = os.path.join(result_dir, "data_combined.csv")
+    # GPS_data.to_csv(GPS_datafile)
     # points_file = os.path.join(outerdir, '1km_grid0.csv')
     x_field = "POINT_X"
     y_field = "POINT_Y"
