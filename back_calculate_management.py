@@ -105,6 +105,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                                                            empirical_date) - 1,
                                                        math.ceil(
                                                            empirical_date) + 1)
+                biomass_df.drop_duplicates(inplace=True)
                 if live_or_total == 'live':
                     simulated_biomass = biomass_df.loc[empirical_date, 'aglivc']
                 elif live_or_total == 'total':
@@ -189,34 +190,3 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
             os.remove(file)
         os.remove(os.path.join(input_dir, 'sch_orig.sch'))
         os.remove(os.path.join(century_dir, site['name'] + '_hist.bin'))
-
-def opc_weather_station_sites():
-    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
-    n_years = 1 # how many years to potentially manipulate?
-    century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
-    out_dir = r"C:\Users\Ginger\Desktop\test_1.13.16"  # where to put results of this routine
-    vary = 'both' # 'schedule', 'intensity', 'both'
-    live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
-    threshold = 10.0  # must match biomass within this many g per sq m
-    max_iterations = 40  # number of times to try
-    fix_file = 'drytrpfi.100'
-
-    kamok = {'name': 'Kamok', 'biomass': 119.72, 'date': 2015.92}
-    loidien = {'name': 'Loidien', 'biomass': 93.74, 'date': 2015.92}
-    research = {'name': 'Research', 'biomass': 375.33, 'date': 2015.75}
-    loirugurugu = {'name': 'Loirugu', 'biomass': 116.7, 'date': 2015.75}
-    serat = {'name': 'Serat', 'biomass': 95.4, 'date': 2015.92}
-    rongai = {'name': 'Rongai', 'biomass': 79.84, 'date': 2015.92}
-
-    site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
-    site_list = [kamok]
-    for site in site_list:
-        out_dir_site = os.path.join(out_dir, site['name'])
-        if not os.path.exists(out_dir_site):
-            os.makedirs(out_dir_site) 
-        back_calculate_management(site, input_dir, century_dir, out_dir_site,
-                                  fix_file, n_years, vary, live_or_total,
-                                  threshold, max_iterations)
-
-if __name__ == "__main__":
-    opc_weather_station_sites()

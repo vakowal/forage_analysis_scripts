@@ -495,17 +495,19 @@ if __name__ == "__main__":
     # GPS_data = combine_GPS_files(outerdir)
     # points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
     # result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
-    result_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations_10.5.16'
+    datadir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations_10.5.16'
     weather_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
     gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
     veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"
     distance = 2.
-    GPS_datafile = os.path.join(result_dir, "data_combined.csv")
+    GPS_datafile = os.path.join(outerdir, "data_combined.csv")
+    spray_race_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\spray_race_coordinates.csv"
+    result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_spray_races"
     # GPS_data.to_csv(GPS_datafile)
     # points_file = os.path.join(outerdir, '1km_grid0.csv')
     x_field = "POINT_X"
     y_field = "POINT_Y"
     # x_field = "Long"
     # y_field = "Lat"
-    summarize_density(weather_file, x_field, y_field, gps_metadata_file,
+    summarize_density(spray_race_csv, x_field, y_field, gps_metadata_file,
                       GPS_datafile, outerdir, result_dir, distance)
