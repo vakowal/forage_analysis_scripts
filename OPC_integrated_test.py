@@ -233,15 +233,15 @@ def empirical_series_definition():
     (where 0=January 2015) and dens_series gives stocking density in that
     month, in animals per ha."""
     
-    kamok = {'name': 'Kamok', 'grz_months': [0, 1, 2, 3, 8], 'dens_series':
-             {0: 0.023, 1: 0.031, 2: 0.029, 3: 0.015, 8: 0.007}, 'start_mo': 2}
-    loidien = {'name': 'Loidien', 'grz_months': [0, 1, 2], 'dens_series':
-               {0: 0.006, 1: 0.011, 2: 0.012}, 'start_mo': 2}
-    research = {'name': 'Research', 'grz_months': [0, 1, 2, 3, 4, 6, 7, 9],
-                'dens_series': {0: 0.009, 1: 0.003, 2: 0.013, 3: 0.016,
-                4: 0.022, 6: 0.001, 7: 0.005, 9: 0.003}, 'start_mo': 2}
-    loirugurugu = {'name': 'Loirugu', 'grz_months': [0, 5], 'dens_series':
-                   {0: 0.016, 5: 0.009}, 'start_mo': 3}
+    kamok = {'name': 'Kamok', 'grz_months': [1, 2, 3, 8], 'dens_series':
+             {1: 0.031, 2: 0.029, 3: 0.015, 8: 0.007}, 'start_mo': 2}
+    loidien = {'name': 'Loidien', 'grz_months': [1, 2], 'dens_series':
+               {1: 0.011, 2: 0.012}, 'start_mo': 2}
+    research = {'name': 'Research', 'grz_months': [1, 2, 3, 4, 6, 7, 9],
+                'dens_series': {1: 0.003, 2: 0.013, 3: 0.016, 4: 0.022,
+                6: 0.001, 7: 0.005, 9: 0.003}, 'start_mo': 2}
+    loirugurugu = {'name': 'Loirugu', 'grz_months': [5], 'dens_series':
+                   {5: 0.009}, 'start_mo': 3}
     serat = {'name': 'Serat', 'grz_months': [6, 7], 'dens_series': {6: 0.003,
              7: 0.004}, 'start_mo': 4}
     rongai = {'name': 'Rongai', 'grz_months': [], 'dens_series': {},
@@ -303,39 +303,54 @@ def run_empirical_stocking_density():
                         def_graz_file)
         os.remove(os.path.join(century_dir, 'default_graz.100'))
 
-def summarize_comparison(save_as):
+def summarize_comparison(save_dir):
     """Compare biomass calculated via empirical stocking density test to
     biomass measurements from the field."""
     
     sim_outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
-    empirical_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather.csv"
-    emp_df = pandas.read_csv(empirical_csv)
-    site_list = empirical_series_definition()
-    comp_dict = {'site': [], 'month': [], 'biomass_kg_ha': [], 'sim_vs_emp': []}
-    for site in site_list:
-        emp_sub = emp_df.ix[(emp_df['site'] == site['name']) &
-                            (emp_df['year'] == 15), ['biomass_kgha', 'month']]
-        match_months = emp_sub['month'].values.tolist()
-        sim_dir = os.path.join(sim_outerdir, site['name'])
-        template_dir = os.path.join(sim_dir, 'CENTURY_outputs_spin_up')
-        template_file = [f for f in os.listdir(template_dir) if
-                         f.endswith('.bin')][0]
-        sim_name = template_file[:-4]
-        sim_df = pandas.read_csv(os.path.join(sim_dir, 'summary_results.csv'))
-        sim_df['total_kgha'] = sim_df['{}_green_kgha'.format(sim_name)] + \
+    emp_list = [r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather.csv",
+                r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather_unrestricted_by_trees_shrubs.csv"]
+    for empirical_csv in emp_list:
+        emp_df = pandas.read_csv(empirical_csv)
+        kamok = {'name': 'Kamok'}
+        loidien = {'name': 'Loidien'}
+        research = {'name': 'Research'}
+        loirugurugu = {'name': 'Loirugurugu'}
+        serat = {'name': 'Serat'}
+        rongai = {'name': 'Rongai'}
+        site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
+        comp_dict = {'site': [], 'month': [], 'biomass_kg_ha': [],
+                     'sim_vs_emp': []}
+        for site in site_list:
+            emp_sub = emp_df.ix[(emp_df['site'] == site['name']) &
+                                (emp_df['year'] == 15), ['mean_biomass_kgha',
+                                'month']]
+            match_months = emp_sub['month'].values.tolist()
+            sim_dir = os.path.join(sim_outerdir, site['name'])
+            template_dir = os.path.join(sim_dir, 'CENTURY_outputs_spin_up')
+            template_file = [f for f in os.listdir(template_dir) if
+                             f.endswith('.bin')][0]
+            sim_name = template_file[:-4]
+            sim_df = pandas.read_csv(os.path.join(sim_dir,
+                                                  'summary_results.csv'))
+            sim_df['total_kgha'] = sim_df['{}_green_kgha'.format(sim_name)] + \
                                         sim_df['{}_dead_kgha'.format(sim_name)]
-        sim_df = sim_df.loc[(sim_df['month'].isin(match_months)),
-                            ['total_kgha', 'month']]
-        comp_dict['site'].extend([site['name']] * len(match_months) * 2)
-        comp_dict['month'].extend(match_months * 2)
-        comp_dict['sim_vs_emp'].extend(['sim'] * len(match_months))
-        comp_dict['sim_vs_emp'].extend(['emp'] * len(match_months))
-        comp_dict['biomass_kg_ha'].extend(sim_df['total_kgha'].values)
-        comp_dict['biomass_kg_ha'].extend(emp_sub['biomass_kgha'].values)
-    df = pandas.DataFrame(comp_dict)
-    df.to_csv(save_as)
+            sim_df = sim_df.loc[(sim_df['month'].isin(match_months)),
+                                ['total_kgha', 'month']]
+            comp_dict['site'].extend([site['name']] * len(match_months) * 2)
+            comp_dict['month'].extend(sim_df.month.values)
+            comp_dict['month'].extend(emp_sub.month.values)
+            comp_dict['sim_vs_emp'].extend(['sim'] * len(match_months))
+            comp_dict['sim_vs_emp'].extend(['emp'] * len(match_months))
+            comp_dict['biomass_kg_ha'].extend(sim_df.total_kgha.values)
+            comp_dict['biomass_kg_ha'].extend(emp_sub.mean_biomass_kgha.values)
+        df = pandas.DataFrame(comp_dict)
+        save_as = os.path.join(save_dir, 'comparison_{}'.format(
+                                              os.path.basename(empirical_csv)))
+        df.to_csv(save_as)
     
 if __name__ == "__main__":
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density\comparison_with_empirical_measurements.csv"
-    summarize_comparison(save_as)
+    # run_empirical_stocking_density()
+    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
+    summarize_comparison(save_dir)
     
