@@ -196,8 +196,11 @@ def clim_tables_to_inputs(prec_table, temp_table, input_folder):
     
     temp_df = pd.read_csv(temp_table)
     prec_df = pd.read_csv(prec_table)
-    year_list = [2000 + y for y in prec_df.year.unique()][1:]
-    year_list = [int(y) for y in year_list]
+    if 'year' in prec_df.columns.values:
+        year_list = [2000 + y for y in prec_df.year.unique()][1:]
+        year_list = [int(y) for y in year_list]
+    else:
+        year_list = [2015]
     for site in prec_df.site.unique():
         sub_p_df = prec_df.loc[(prec_df["site"] == site) & (
                                prec_df["month"].notnull())]
@@ -206,7 +209,7 @@ def clim_tables_to_inputs(prec_table, temp_table, input_folder):
         # calc average prec in month 1
         avg_mo1 = sub_p_df.loc[(sub_p_df["month"] == 1),
                                "prec"].values.mean() / 10.0
-        trans_dict = {'label': ['prec'] * len(sub_p_df.year.unique()),
+        trans_dict = {'label': ['prec'] * len(year_list),
                       'year': year_list * 3}
         for mon in range(1, 13):
             p_vals = sub_p_df.loc[(sub_p_df["month"] == mon),
@@ -214,11 +217,12 @@ def clim_tables_to_inputs(prec_table, temp_table, input_folder):
             trans_dict[mon] = [v / 10.0 for v in p_vals]  # RFE vals in mm
             tmin = sub_t_df.loc[(sub_t_df['month'] == mon), 'tmin'].values
             tmax = sub_t_df.loc[(sub_t_df['month'] == mon), 'tmax'].values
-            trans_dict[mon].extend([tmin] * len(sub_p_df.year.unique()))
-            trans_dict[mon].extend([tmax] * len(sub_p_df.year.unique()))
-        trans_dict[1].insert(0, avg_mo1)
-        trans_dict['label'].extend(['tmin'] * len(sub_p_df.year.unique()))
-        trans_dict['label'].extend(['tmax'] * len(sub_p_df.year.unique()))
+            trans_dict[mon].extend([tmin] * len(year_list))
+            trans_dict[mon].extend([tmax] * len(year_list))
+        if len(trans_dict[1]) < len(trans_dict[2]):  # RFE missing Jan-00 val
+            trans_dict[1].insert(0, avg_mo1)
+        trans_dict['label'].extend(['tmin'] * len(year_list))
+        trans_dict['label'].extend(['tmax'] * len(year_list))
         df = pd.DataFrame(trans_dict)
         cols = df.columns.tolist()
         cols = cols[-2:-1] + cols[-1:] + cols[:-2]
@@ -233,7 +237,31 @@ def clim_tables_to_inputs(prec_table, temp_table, input_folder):
         formats = ['%4s', '%6s'] + ['%7.2f'] * 12
         np.savetxt(save_as, df.values, fmt=formats, delimiter='')
 
-def process_worldclim(worldclim_folder, zonal_shp, save_as):
+def remove_wth_from_sch(input_dir):
+    """To run the simulation with worldclim precipitation, must remove the
+    reference to empirical weather and use just the averages in the site.100
+    file."""
+    
+    sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
+    sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
+    sch_files = [os.path.join(input_dir, f) for f in sch_files]
+    for sch in sch_files:
+        fh, abs_path = mkstemp()
+        os.close(fh)
+        with open(abs_path, 'wb') as newfile:
+            with open(sch, 'rb') as old_file:
+                for line in old_file:
+                    if '.wth' in line:
+                        line = old_file.next()
+                    if "Weather choice" in line:
+                        newline = "M             Weather choice\r\n"
+                        newfile.write(newline)
+                    else:
+                        newfile.write(line)
+        shutil.copyfile(abs_path, sch)
+        os.remove(abs_path)
+    
+def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
     """Make a table of max and min monthly temperature for points which are the
     centroids of properties (features in zonal_shp), from worldclim rasters."""
     
@@ -270,7 +298,40 @@ def process_worldclim(worldclim_folder, zonal_shp, save_as):
             temp_dict['month'].extend(month_list)
     temp_df = pd.DataFrame.from_dict(temp_dict)
     temp_df.to_csv(save_as, index=False)
+
+def process_worldclim_precip(worldclim_folder, zonal_shp, save_as):
+    """Make a table of monthly precip for points which are the
+    centroids of properties (features in zonal_shp), from worldclim rasters."""
     
+    tempdir = tempfile.mkdtemp()
+    
+    # make property centroid shapefile to extract values to points
+    point_shp = os.path.join(tempdir, 'centroid.shp')
+    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    
+    # extract monthly values to each point
+    rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
+    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]
+    raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
+    ex_list = zip(raster_files, field_list)
+    arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+    
+    # read from shapefile to newly formatted table
+    field_list.insert(0, 'FID')
+    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
+    prec_dict = {'site': [], 'month': [], 'prec': []}
+    with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
+        for row in cursor:
+            site = row[0]
+            prec_dict['site'].extend([site] * 12)
+            for f_idx in range(1, len(field_list)):
+                field = field_list[f_idx]
+                month = field[4:6]
+                prec_dict['prec'].append(row[f_idx])
+            prec_dict['month'].extend(month_list)
+    prec_df = pd.DataFrame.from_dict(prec_dict)
+    prec_df.to_csv(save_as, index=False)    
+
 def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
     """Calculate precipitation at property centroids from FEWS RFE (rainfall
     estimate) rasters.  The zonal_shp shapefile should be properties."""
@@ -279,7 +340,8 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
     # 'ea15011.bil' for the 1st period of the first month of year 2015,
     # 'ea08121.bil' for the 1st period of the 12th month of year 2008, etc
     
-    tempdir = tempfile.mkdtemp()
+    # tempdir = tempfile.mkdtemp() todo remove
+    tempdir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_sum"
     
     # make property centroid shapefile to extract values to points
     point_shp = os.path.join(tempdir, 'centroid.shp')
@@ -325,7 +387,7 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
     
     # extract monthly values to each point
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
-    
+
     # read monthly values into table
     num_val = len(field_list)
     prec_dict = {'site': [], 'year': [], 'month': [], 'prec': []}
@@ -343,6 +405,45 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
                 prec_dict['prec'].append(prec)
     prec_df = pd.DataFrame.from_dict(prec_dict)
     prec_df.to_csv(prec_table)
+
+def generate_grass_csvs(template, input_dir):
+    """Make input csvs describing grass for input to the forage model. Copy a
+    template, using names taken from schedule files in the input_dir."""
+    
+    sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
+    sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
+    site_list = [f[:-4] for f in sch_files]
+    
+    template_df = pd.read_csv(template)
+    for site in site_list:
+        new_df = template_df.copy()
+        new_df = new_df.set_value(0, 'label', site)
+        save_as = os.path.join(input_dir, '{}.csv'.format(site))
+        new_df.to_csv(save_as, index=False)
+
+def generate_site_csv(input_dir, save_as):
+    """Generate a csv that can be used to direct inputs to run the model."""
+    
+    def get_latitude(site_file):
+        with open(site_file, 'r') as read_file:
+            for line in read_file:
+                if 'SITLAT' in line:
+                    lat = line[:8].strip()
+        return lat
+                
+    sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
+    sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
+    site_list = [f[:-4] for f in sch_files]
+    
+    site_dict = {'name': [], 'lat': []}
+    for site in site_list:
+        site_file = os.path.join(input_dir, '{}.100'.format(site))
+        assert os.path.isfile(site_file), "file {} not found".format(site_file)
+        lat = get_latitude(site_file)
+        site_dict['name'].append(site)
+        site_dict['lat'].append(lat)
+    site_df = pd.DataFrame(site_dict)
+    site_df.to_csv(save_as, index=False)
     
 if __name__ == "__main__":
     zonal_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016.shp"
@@ -360,9 +461,18 @@ if __name__ == "__main__":
     aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
     # clip_FEWS_files(FEWS_folder, clipped_folder, aoi_shp)
     prec_table = r"C:\Users\Ginger\Desktop\prec.csv"
-    process_FEWS_files(clipped_folder, zonal_shp, prec_table)
-    worldclim_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_Worldclim_temp"
+    # process_FEWS_files(clipped_folder, zonal_shp, prec_table)
+    worldclim_temp_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_Worldclim_temp"
     temp_table = r"C:\Users\Ginger\Desktop\temp.csv"
-    # process_worldclim(worldclim_folder, zonal_shp, temp_table)
+    worldclim_precip_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_Worldclim_prec"
+    # process_worldclim_precip(worldclim_precip_folder, zonal_shp, prec_table)
+    # process_worldclim_temp(worldclim_temp_folder, zonal_shp, temp_table)
     input_folder = 'C:/Users/Ginger/Desktop/test_wth'
-    clim_tables_to_inputs(prec_table, temp_table, input_folder)
+    # clim_tables_to_inputs(prec_table, temp_table, input_folder)
+    template = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\grass_suyian.csv"
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
+    # generate_grass_csvs(template, input_dir)
+    site_csv = os.path.join(input_dir, 'regional_properties.csv')
+    # generate_site_csv(input_dir, site_csv)
+    remove_wth_from_sch(input_dir)
+    
