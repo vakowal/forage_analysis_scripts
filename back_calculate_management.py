@@ -55,6 +55,8 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     h_schedule = os.path.join(input_dir, site['name'] + '_hist.sch')
     file_list = [hist_bat, extend_bat, e_schedule, h_schedule, site_file,
                  weather_file]
+    if weather_file == 'NA':
+        file_list.remove(weather_file)
     for file in file_list:
         shutil.copyfile(file, os.path.join(century_dir,
                                            os.path.basename(file)))
