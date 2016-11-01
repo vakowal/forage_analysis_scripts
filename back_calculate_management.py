@@ -193,21 +193,17 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
         os.remove(os.path.join(input_dir, 'sch_orig.sch'))
         os.remove(os.path.join(century_dir, site['name'] + '_hist.bin'))
 
-def summarize_calc_schedules(site_list, n_months, input_dir, outerdir,
-                             raw_file, summary_file):
+def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
+                             outerdir, raw_file, summary_file):
     """Summarize the grazing schedules that were calculated via the back-calc
     management regime.  Site_list is a list of sites identical to those used
     as inputs to the back-calc management routine."""
     
     df_list = list()
     for site in site_list:
-        flgrem_GLP = 0.1  # TODO
-        fdgrem_GLP = 0.05
-        flgrem_GL = 0.1
-        fdgrem_GL = 0.05
         site_name = site['name']
         empirical_date = site['date']
-        site_dir = os.path.join(outerdir, 'FID_{}'.format(site_name))
+        site_dir = os.path.join(outerdir, '{}'.format(site_name))
         result_csv = os.path.join(site_dir,
                           'modify_management_summary_{}.csv'.format(site_name))
         res_df = pd.read_csv(result_csv)
@@ -260,27 +256,27 @@ def summarize_calc_schedules(site_list, n_months, input_dir, outerdir,
                 final_iter = max(grz_iter_list)
                 final_grz = os.path.join(site_dir, 'graz_{}{}.100'.format(
                                          site_name, final_iter))
-                grz_levels = history.grazing_level.unique()
-                grz_level_list = [{'label': level} for level in grz_levels]
-                for grz in grz_level_list:
-                    flgrem, fdgrem = retrieve_grazing_params(final_grz,
-                                                             grz['label'])
-                    grz['flgrem'] = flgrem
-                    grz['fdgrem'] = fdgrem
             else:
-                raise Exception, "No grazing files found"
+                final_grz = os.path.join(century_dir, 'graz.100')
+            grz_levels = history.grazing_level.unique()
+            grz_level_list = [{'label': level} for level in grz_levels]
+            for grz in grz_level_list:
+                flgrem, fdgrem = retrieve_grazing_params(final_grz,
+                                                         grz['label'])
+                grz['flgrem'] = flgrem
+                grz['fdgrem'] = fdgrem
         # fill in history with months where no grazing took place
         history = cent.fill_schedule(history, first_rel_year, first_rel_month,
                                      relative_empirical_year, empirical_month)
         history['year'] = history['relative_year'] + start_year - 1
         history['perc_live_removed'] = 0.
         history['perc_dead_removed'] = 0.
-        import pdb; pdb.set_trace()
-        for grz in grz_level_list:
-            history.ix[history.grazing_level == grz['label'],
-                       'perc_live_removed'] = grz['flgrem']
-            history.ix[history.grazing_level == grz['label'],
-                       'perc_dead_removed'] = grz['fdgrem']
+        if len(grz_level_list) > 0:
+            for grz in grz_level_list:
+                history.ix[history.grazing_level == grz['label'],
+                           'perc_live_removed'] = grz['flgrem']
+                history.ix[history.grazing_level == grz['label'],
+                           'perc_dead_removed'] = grz['fdgrem']
         # collect biomass for these months
         history['date'] = history.year + history.month / 12.0
         history = history.round({'date': 2})
