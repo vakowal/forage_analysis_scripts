@@ -21,31 +21,23 @@ def back_calc_match_last_meas():
     OPC_veg_9.30.16."""
     
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
-    n_years = 2 # how many years to potentially manipulate?
+    n_months = 24
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
-    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\back_calc_match_last_measurement"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC_integrated_test\back_calc_match_last_measurement"
     vary = 'both' # 'schedule', 'intensity', 'both'
     live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
     threshold = 10.0  # must match biomass within this many g per sq m
     max_iterations = 40  # number of times to try
     fix_file = 'drytrpfi.100'
 
-    kamok = {'name': 'Kamok', 'biomass': 119.72, 'date': 2015.92}
-    loidien = {'name': 'Loidien', 'biomass': 93.74, 'date': 2015.92}
-    research = {'name': 'Research', 'biomass': 276.03, 'date': 2016.00}
-    loirugurugu = {'name': 'Loirugu', 'biomass': 96.76, 'date': 2015.75}
-    serat = {'name': 'Serat', 'biomass': 145.7, 'date': 2016.00}
-    rongai = {'name': 'Rongai', 'biomass': 165.64, 'date': 2016.00}
-
-
-    site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
+    site_list = sites_definition('last')
     for site in site_list:
         out_dir_site = os.path.join(out_dir, site['name'])
         if not os.path.exists(out_dir_site):
             os.makedirs(out_dir_site) 
-        backcalc.back_calculate_management(site, input_dir, century_dir, out_dir_site,
-                                  fix_file, n_years, vary, live_or_total,
-                                  threshold, max_iterations)
+            backcalc.back_calculate_management(site, input_dir, century_dir, out_dir_site,
+                                      fix_file, n_months, vary, live_or_total,
+                                      threshold, max_iterations)
 
 def back_calc_match_first_meas():
     """Use the back-calc management routine to match the first empirical biomass
@@ -54,9 +46,9 @@ def back_calc_match_first_meas():
     OPC_veg_9.30.16."""
     
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
-    n_years = 2 # how many years to potentially manipulate?
+    n_months = 24
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
-    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\back_calc_match_first_measurement"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC_integrated_test\back_calc_match_first_measurement"
     vary = 'both' # 'schedule', 'intensity', 'both'
     live_or_total = 'total'  # 'live' (live biomass) or 'total' (live + standing dead biomass)
     threshold = 10.0  # must match biomass within this many g per sq m
@@ -68,9 +60,9 @@ def back_calc_match_first_meas():
         out_dir_site = os.path.join(out_dir, site['name'])
         if not os.path.exists(out_dir_site):
             os.makedirs(out_dir_site) 
-        backcalc.back_calculate_management(site, input_dir, century_dir, out_dir_site,
-                                  fix_file, n_years, vary, live_or_total,
-                                  threshold, max_iterations)
+            backcalc.back_calculate_management(site, input_dir, century_dir, out_dir_site,
+                                      fix_file, n_months, vary, live_or_total,
+                                      threshold, max_iterations)
 
 def collect_results(outerdir, site_list):
     succeeded = []
@@ -95,105 +87,8 @@ def collect_results(outerdir, site_list):
     print "diff list:"
     print diff_list
 
-def summarize_calc_schedules(site_list, outerdir, save_as):
-    """summarize the grazing schedules that were calculated via the back-calc
-    management regime.
-    We summarize grazing scheduled only during 2015, and we assume that 2015 is
-    relative year 3 within the last block of the schedule file."""
-    
-    relative_year_2015 = 3
-    df_list = list()
-    for site in site_list:
-        flgrem_GLP = 0.1
-        fdgrem_GLP = 0.05
-        flgrem_GL = 0.1
-        fdgrem_GL = 0.05
-        site_name = site['name']
-        empirical_date = site['date']
-        site_dir = os.path.join(outerdir, site_name)
-        result_csv = os.path.join(site_dir,
-                          'modify_management_summary_{}.csv'.format(site_name))
-        res_df = pandas.read_csv(result_csv)
-        sch_files = [f for f in os.listdir(site_dir) if f.endswith('.sch')]
-        sch_iter_list = [int(re.search('{}_{}(.+?).sch'.format(site_name,
-                         site_name), f).group(1)) for f in sch_files]
-        if len(sch_iter_list) == 0:
-            import pdb; pdb.set_trace()
-        final_sch_iter = max(sch_iter_list)
-        final_sch = os.path.join(site_dir, '{}_{}{}.sch'.format(site_name,
-                                 site_name, final_sch_iter))
-        
-        # read schedule file, collect months where grazing was scheduled
-        schedule_df = cent.read_block_schedule(final_sch)
-        for i in range(0, schedule_df.shape[0]):
-            start_year = schedule_df.loc[i, 'block_start_year']
-            last_year = schedule_df.loc[i, 'block_end_year']
-            if empirical_date > start_year and empirical_date <= last_year:
-                break
-        relative_empirical_year = int(math.floor(empirical_date) -
-                                      start_year + 1)
-        empirical_month = int(round((empirical_date - float(math.floor(
-                                empirical_date))) * 12))
-        
-        # find months where grazing took place prior to empirical date
-        graz_schedule = cent.read_graz_level(final_sch)
-        block = graz_schedule.loc[(graz_schedule["block_end_year"] == 
-                                  last_year), ['relative_year', 'month',
-                                  'grazing_level']]
-        empirical_year = block.loc[(block['relative_year'] ==
-                                   relative_empirical_year), ]
-        empirical_year = empirical_year.loc[(empirical_year['month'] <=
-                                            empirical_month), ]
-        prev_year = block.loc[(block['relative_year'] <
-                              relative_empirical_year), ]
-        prev_year = prev_year.loc[(prev_year['relative_year'] >=
-                                   relative_year_2015), ]
-        history = prev_year.append(empirical_year)
-        if len(history) > 0:
-            # collect % biomass removed for these months
-            grz_files = [f for f in os.listdir(site_dir) if
-                         f.startswith('graz')]
-            if len(grz_files) > 0:
-                grz_iter_list = [int(re.search('graz_{}(.+?).100'.format(
-                                 site_name), f).group(1)) for f in grz_files]
-                final_iter = max(grz_iter_list)
-                final_grz = os.path.join(site_dir, 'graz_{}{}.100'.format(
-                                         site_name, final_iter))
-                with open(final_grz, 'rb') as old_file:
-                    for line in old_file:
-                        if 'GL    ' in line:
-                            line = old_file.next()
-                            if 'FLGREM' in line:
-                                flgrem_GL = line[:8].strip()
-                                line = old_file.next()
-                            if 'FDGREM' in line:
-                                fdgrem_GL = line[:8].strip()
-                            else:
-                                er = "Error: FLGREM expected"
-                                raise Exception(er)
-        history['perc_live_removed'] = np.where(history['grazing_level']
-                                                == 'GL', flgrem_GL, flgrem_GLP)
-        history['perc_dead_removed'] = np.where(history['grazing_level']
-                                                == 'GL', fdgrem_GL, fdgrem_GLP)
-        # collect biomass for these months
-        history['year'] = np.where(history['relative_year'] == 3, 2015, 2016)
-        history['date'] = history.year + history.month / 12.0
-        history = history.round({'date': 2})
-        final_sim = int(res_df.iloc[len(res_df) - 1].Iteration)
-        output_file = os.path.join(outerdir, site_name,
-                               'CENTURY_outputs_iteration{}'.format(final_sim),
-                               '{}.lis'.format(site_name))
-        biomass_df = cent.read_CENTURY_outputs(output_file, 2015, 2015)
-        biomass_df['time'] = biomass_df.index
-        sum_df = history.merge(biomass_df, left_on='date', right_on='time',
-                               how='inner')
-        sum_df['site'] = site_name
-        df_list.append(sum_df)
-    summary_df = pandas.concat(df_list)
-    summary_df.to_csv(save_as)
-
 def combine_empirical_density_files(save_as):
-    outerdir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_spray_races'
+    outerdir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations'
     files = [f for f in os.listdir(outerdir) if
              f.startswith('average_animals')]
     df_list = list()
@@ -221,7 +116,7 @@ def sites_definition(first_or_last):
         loirugurugu = {'name': 'Loirugu', 'biomass': 96.76, 'date': 2015.75}
         serat = {'name': 'Serat', 'biomass': 145.7, 'date': 2016.00}
         rongai = {'name': 'Rongai', 'biomass': 165.64, 'date': 2016.00}
-    site_list = [research, loirugurugu]  # [kamok, loidien, research, loirugurugu, serat, rongai]
+    site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
     return site_list
 
 def empirical_series_definition():
@@ -247,7 +142,46 @@ def empirical_series_definition():
     rongai = {'name': 'Rongai', 'grz_months': [], 'dens_series': {},
               'start_mo': 4}
     site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
+    for site in site_list:
+        site['dens_series'] = {k: v * 10 for k, v in
+                               site['dens_series'].items()}
     return site_list
+
+def run_zero_density():
+    """Compare productivity at the 6 sites with zero grazing pressure."""
+    
+    input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/zero_dens"
+    outer_output_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\zero_dens"
+    century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+    site_list = empirical_series_definition()
+    for site in site_list:
+        outdir = os.path.join(outer_output_dir, '{}'.format(site['name']))
+        grass_csv = os.path.join(input_dir, '{}.csv'.format(site['name']))
+        forage_args = {
+            'latitude': 0.02759,
+            'prop_legume': 0.0,
+            'steepness': 1.,
+            'DOY': 1,
+            'start_year': 2015,
+            'start_month': 1,
+            'num_months': 12,
+            'mgmt_threshold': 0.1,
+            'century_dir': century_dir,
+            'outdir': outdir,
+            'template_level': 'GL',
+            'fix_file': 'drytrpfi.100',
+            'user_define_protein': 0,
+            'user_define_digestibility': 0,
+            'herbivore_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herd_avg_calibrated.csv",
+            'grass_csv': grass_csv,
+            'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+            'input_dir': input_dir,
+            'diet_verbose': 0,
+            'restart_monthly': 1,
+            'restart_yearly': 0,
+            'grz_months': [],
+            }
+        forage.execute(forage_args)
     
 def run_empirical_stocking_density():
     """Run the model forward from the date of the first empirical biomass
@@ -308,8 +242,8 @@ def summarize_comparison(save_dir):
     biomass measurements from the field."""
     
     sim_outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
-    emp_list = [r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather.csv",
-                r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather_unrestricted_by_trees_shrubs.csv"]
+    emp_list = [r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather.csv"]
+                # r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_veg_9.30.16_by_weather_unrestricted_by_trees_shrubs.csv"]
     for empirical_csv in emp_list:
         emp_df = pandas.read_csv(empirical_csv)
         kamok = {'name': 'Kamok'}
@@ -326,7 +260,7 @@ def summarize_comparison(save_dir):
                                 (emp_df['year'] == 15), ['mean_biomass_kgha',
                                 'month']]
             match_months = emp_sub['month'].values.tolist()
-            sim_dir = os.path.join(sim_outerdir, site['name'])
+            sim_dir = os.path.join(sim_outerdir, '{}_x10'.format(site['name']))
             template_dir = os.path.join(sim_dir, 'CENTURY_outputs_spin_up')
             template_file = [f for f in os.listdir(template_dir) if
                              f.endswith('.bin')][0]
@@ -345,12 +279,58 @@ def summarize_comparison(save_dir):
             comp_dict['biomass_kg_ha'].extend(sim_df.total_kgha.values)
             comp_dict['biomass_kg_ha'].extend(emp_sub.mean_biomass_kgha.values)
         df = pandas.DataFrame(comp_dict)
-        save_as = os.path.join(save_dir, 'comparison_{}'.format(
+        save_as = os.path.join(save_dir, 'comparison_x10_{}'.format(
                                               os.path.basename(empirical_csv)))
         df.to_csv(save_as)
+
+def combine_summary_files():
+    """Make a file that can be used to plot biomass differences between
+    sites."""
     
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\zero_dens\combined_summary.csv"
+    df_list = []
+    outer_output_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\zero_dens"
+    site_list = empirical_series_definition()
+    for site in site_list:
+        sim_name = site['name']
+        sim_dir = os.path.join(outer_output_dir, '{}'.format(sim_name))
+        sim_df = pandas.read_csv(os.path.join(sim_dir,'summary_results.csv'))
+        sim_df['total_kgha'] = sim_df['{}_green_kgha'.format(sim_name)] + \
+                                    sim_df['{}_dead_kgha'.format(sim_name)]
+        sim_df['site'] = sim_name
+        sim_df = sim_df[['site', 'total_kgha', 'month', 'year',
+                         'total_offtake']]
+        df_list.append(sim_df)
+    combined_df = pandas.concat(df_list)
+    combined_df.to_csv(save_as)
+
+def summarize_sch_wrapper():
+    """summarize back-calculated schedules in terms of biomass removed"""
+    
+    n_months = 12
+    century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input"
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC_integrated_test\back_calc_match_last_measurement"
+    site_list = sites_definition('last')
+    raw_file = os.path.join(outerdir, 'schedule_summary.csv')
+    summary_file = os.path.join(outerdir, 'percent_removed.csv')
+    backcalc.summarize_calc_schedules(site_list, n_months, input_dir,
+                                      century_dir, outerdir, raw_file,
+                                      summary_file)
+                                              
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC_integrated_test\back_calc_match_first_measurement"
+    site_list = sites_definition('first')
+    raw_file = os.path.join(outerdir, 'schedule_summary.csv')
+    summary_file = os.path.join(outerdir, 'percent_removed.csv')
+    # backcalc.summarize_calc_schedules(site_list, n_months, input_dir, 
+                                      # century_dir, outerdir, raw_file,
+                                      # summary_file)
+                                              
 if __name__ == "__main__":
     # run_empirical_stocking_density()
     save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
-    summarize_comparison(save_dir)
-    
+    # summarize_comparison(save_dir)
+    # combine_summary_files()
+    # back_calc_match_first_meas()
+    # back_calc_match_last_meas()
+    summarize_sch_wrapper()
