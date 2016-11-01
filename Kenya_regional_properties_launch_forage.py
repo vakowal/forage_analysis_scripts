@@ -127,7 +127,8 @@ def summarize_sch_wrapper(match_csv):
     """Wrapper function to summarize back-calculated schedules in several
     directories specified by year_to_match and live_or_total."""
     
-    n_months = 12
+    n_months = 24
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     for live_or_total in ['total', 'live']:
         for year_to_match in [2014, 2015]:
@@ -141,134 +142,15 @@ def summarize_sch_wrapper(match_csv):
             summary_file = os.path.join(outerdir,
                                    "{}_{}_percent_removed.csv".format(
                                    year_to_match, live_or_total))
-            summarize_calc_schedules(site_list, n_months, outerdir, raw_file,
-                                     summary_file)
+            backcalc.summarize_calc_schedules(site_list, n_months, input_dir, 
+                                              outerdir, raw_file, summary_file)
     
     
-def summarize_calc_schedules(site_list, n_months, outerdir, raw_file,
-                             summary_file):
-    """summarize the grazing schedules that were calculated via the back-calc
-    management regime.
-    We summarize grazing scheduled only during the two years that were modified
-    as part of the back-calc regime.  We assume that relative year 1 in the
-    schedule file is equal to 2011."""
-    
-    no_mod_list = []  # sites for which no modification was necessary
-    df_list = list()
-    for site in site_list:
-        flgrem_GLP = 0.1
-        fdgrem_GLP = 0.05
-        flgrem_GL = 0.1
-        fdgrem_GL = 0.05
-        site_name = site['name']
-        empirical_date = site['date']
-        site_dir = os.path.join(outerdir, 'FID_{}'.format(site_name))
-        result_csv = os.path.join(site_dir,
-                          'modify_management_summary_{}.csv'.format(site_name))
-        res_df = pd.read_csv(result_csv)
-        sch_files = [f for f in os.listdir(site_dir) if f.endswith('.sch')]
-        sch_iter_list = [int(re.search('{}_{}(.+?).sch'.format(site_name,
-                         site_name), f).group(1)) for f in sch_files]
-        if len(sch_iter_list) == 0:
-            no_mod_list.append(result_csv)
-            continue  # TODO find original schedule
-        final_sch_iter = max(sch_iter_list)
-        final_sch = os.path.join(site_dir, '{}_{}{}.sch'.format(site_name,
-                                 site_name, final_sch_iter))
-        
-        # read schedule file, collect months where grazing was scheduled
-        schedule_df = cent.read_block_schedule(final_sch)
-        for i in range(0, schedule_df.shape[0]):
-            start_year = schedule_df.loc[i, 'block_start_year']
-            last_year = schedule_df.loc[i, 'block_end_year']
-            if empirical_date > start_year and empirical_date <= last_year:
-                break
-        relative_empirical_year = int(math.floor(empirical_date) -
-                                      start_year + 1)
-        empirical_month = int(round((empirical_date - float(math.floor(
-                                empirical_date))) * 12))
-        first_rel_month, first_rel_year = cent.find_first_month_and_year(
-                                               n_months, empirical_month,
-                                               relative_empirical_year)
-        first_abs_year = first_rel_year + start_year - 1
-        # find months where grazing took place prior to empirical date
-        graz_schedule = cent.read_graz_level(final_sch)
-        block = graz_schedule.loc[(graz_schedule["block_end_year"] == 
-                                  last_year), ['relative_year', 'month',
-                                  'grazing_level', 'year']]
-        empirical_year = block.loc[(block['relative_year'] ==
-                                   relative_empirical_year) & 
-                                   (block['month'] <= empirical_month), ]
-        intervening_years = block.loc[(block['relative_year'] <
-                                      relative_empirical_year) & 
-                                      (block['relative_year'] > first_rel_year), ]
-        first_year = block.loc[(block['relative_year'] == first_rel_year) & 
-                                      (block['month'] >= first_rel_month), ]
-        history =  pd.concat([first_year, intervening_years, empirical_year])
-        if len(history) > 0:
-            # collect % biomass removed for these months
-            grz_files = [f for f in os.listdir(site_dir) if
-                         f.startswith('graz')]
-            if len(grz_files) > 0:
-                grz_iter_list = [int(re.search('graz_{}(.+?).100'.format(
-                                 site_name), f).group(1)) for f in grz_files]
-                final_iter = max(grz_iter_list)
-                final_grz = os.path.join(site_dir, 'graz_{}{}.100'.format(
-                                         site_name, final_iter))
-                with open(final_grz, 'rb') as old_file:
-                    for line in old_file:
-                        if 'GL    ' in line:
-                            line = old_file.next()
-                            if 'FLGREM' in line:
-                                flgrem_GL = float(line[:8].strip())
-                                line = old_file.next()
-                            if 'FDGREM' in line:
-                                fdgrem_GL = float(line[:8].strip())
-                            else:
-                                er = "Error: FLGREM expected"
-                                raise Exception(er)
-        
-        # fill in history with months where no grazing took place
-        history = cent.fill_schedule(history, first_rel_year, first_rel_month,
-                                     relative_empirical_year, empirical_month)
-        history['year'] = history['relative_year'] + start_year - 1
-        history['perc_live_removed'] = np.where(
-                                           history['grazing_level'] ==  'GL',
-                                           flgrem_GL, np.where(
-                                           history['grazing_level'] == 'GLP',
-                                           flgrem_GLP, 0.))
-        history['perc_dead_removed'] = np.where(
-                                           history['grazing_level'] == 'GL',
-                                           fdgrem_GL, np.where(
-                                           history['grazing_level'] == 'GLP',
-                                           fdgrem_GLP, 0.))
-        # collect biomass for these months
-        history['date'] = history.year + history.month / 12.0
-        history = history.round({'date': 2})
-        final_sim = int(res_df.iloc[len(res_df) - 1].Iteration)
-        output_file = os.path.join(site_dir,
-                               'CENTURY_outputs_iteration{}'.format(final_sim),
-                               '{}.lis'.format(site_name))
-        biomass_df = cent.read_CENTURY_outputs(output_file, first_abs_year,
-                                               math.floor(empirical_date))
-        biomass_df['time'] = biomass_df.index
-        sum_df = history.merge(biomass_df, left_on='date', right_on='time',
-                               how='inner')
-        sum_df['site'] = site_name
-        df_list.append(sum_df)
-    summary_df = pd.concat(df_list)
-    summary_df['live_rem'] = summary_df.aglivc * summary_df.perc_live_removed
-    summary_df['dead_rem'] = summary_df.stdedc * summary_df.perc_dead_removed
-    summary_df['total_rem'] = summary_df.live_rem + summary_df.dead_rem
-    rem_means = summary_df.groupby(by='site')[('total_rem', 'live_rem',
-                                               'dead_rem')].mean()
-    rem_means.to_csv(summary_file)
-    summary_df.to_csv(raw_file)
 
 if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     # run_baseline(site_csv)
     # combine_summary_files(site_csv)
     match_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Felicia\regional_veg_match_file.csv"
-    back_calc_mgmt(match_csv)
+    # back_calc_mgmt(match_csv)
     summarize_sch_wrapper(match_csv)
