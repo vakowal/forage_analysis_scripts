@@ -21,12 +21,10 @@ def back_calc_mgmt(match_csv):
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     for live_or_total in ['total', 'live']:
         for year_to_match in [2014, 2015]:
-            if live_or_total == 'total' and year_to_match == 2014:
-                continue
             site_list = generate_inputs(match_csv, year_to_match,
                                         live_or_total)
             input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
-            n_years = 2
+            n_months = 24
             century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
             out_dir = os.path.join(outer_outdir, "back_calc_{}_{}".format(
                                                  year_to_match, live_or_total))
@@ -39,11 +37,11 @@ def back_calc_mgmt(match_csv):
                                                                  site['name']))
                 if not os.path.exists(out_dir_site):
                     os.makedirs(out_dir_site) 
-                backcalc.back_calculate_management(site, input_dir,
-                                                   century_dir, out_dir_site,
-                                                   fix_file, n_years,
-                                                   vary, live_or_total,
-                                                   threshold, max_iterations)
+                    backcalc.back_calculate_management(site, input_dir,
+                                                       century_dir, out_dir_site,
+                                                       fix_file, n_months,
+                                                       vary, live_or_total,
+                                                       threshold, max_iterations)
 
 def generate_inputs(match_csv, year_to_match, live_or_total):
     """Generate a list that can be used as input to run the back-calc
@@ -126,8 +124,10 @@ def combine_summary_files(site_csv):
     combined_df.to_csv(save_as)
 
 def summarize_sch_wrapper(match_csv):
+    """Wrapper function to summarize back-calculated schedules in several
+    directories specified by year_to_match and live_or_total."""
     
-    n_years = 2
+    n_months = 12
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     for live_or_total in ['total', 'live']:
         for year_to_match in [2014, 2015]:
@@ -141,11 +141,11 @@ def summarize_sch_wrapper(match_csv):
             summary_file = os.path.join(outerdir,
                                    "{}_{}_percent_removed.csv".format(
                                    year_to_match, live_or_total))
-            summarize_calc_schedules(site_list, n_years, outerdir, raw_file,
+            summarize_calc_schedules(site_list, n_months, outerdir, raw_file,
                                      summary_file)
     
     
-def summarize_calc_schedules(site_list, n_years, outerdir, raw_file,
+def summarize_calc_schedules(site_list, n_months, outerdir, raw_file,
                              summary_file):
     """summarize the grazing schedules that were calculated via the back-calc
     management regime.
@@ -171,7 +171,7 @@ def summarize_calc_schedules(site_list, n_years, outerdir, raw_file,
                          site_name), f).group(1)) for f in sch_files]
         if len(sch_iter_list) == 0:
             no_mod_list.append(result_csv)
-            continue
+            continue  # TODO find original schedule
         final_sch_iter = max(sch_iter_list)
         final_sch = os.path.join(site_dir, '{}_{}{}.sch'.format(site_name,
                                  site_name, final_sch_iter))
@@ -187,21 +187,24 @@ def summarize_calc_schedules(site_list, n_years, outerdir, raw_file,
                                       start_year + 1)
         empirical_month = int(round((empirical_date - float(math.floor(
                                 empirical_date))) * 12))
-        
+        first_rel_month, first_rel_year = cent.find_first_month_and_year(
+                                               n_months, empirical_month,
+                                               relative_empirical_year)
+        first_abs_year = first_rel_year + start_year - 1
         # find months where grazing took place prior to empirical date
         graz_schedule = cent.read_graz_level(final_sch)
         block = graz_schedule.loc[(graz_schedule["block_end_year"] == 
                                   last_year), ['relative_year', 'month',
-                                  'grazing_level']]
+                                  'grazing_level', 'year']]
         empirical_year = block.loc[(block['relative_year'] ==
-                                   relative_empirical_year), ]
-        empirical_year = empirical_year.loc[(empirical_year['month'] <=
-                                            empirical_month), ]
-        prev_year = block.loc[(block['relative_year'] <
-                              relative_empirical_year), ]
-        prev_year = prev_year.loc[(prev_year['relative_year'] >=
-                                   (relative_empirical_year - n_years)), ]
-        history = prev_year.append(empirical_year)
+                                   relative_empirical_year) & 
+                                   (block['month'] <= empirical_month), ]
+        intervening_years = block.loc[(block['relative_year'] <
+                                      relative_empirical_year) & 
+                                      (block['relative_year'] > first_rel_year), ]
+        first_year = block.loc[(block['relative_year'] == first_rel_year) & 
+                                      (block['month'] >= first_rel_month), ]
+        history =  pd.concat([first_year, intervening_years, empirical_year])
         if len(history) > 0:
             # collect % biomass removed for these months
             grz_files = [f for f in os.listdir(site_dir) if
@@ -217,39 +220,43 @@ def summarize_calc_schedules(site_list, n_years, outerdir, raw_file,
                         if 'GL    ' in line:
                             line = old_file.next()
                             if 'FLGREM' in line:
-                                flgrem_GL = line[:8].strip()
+                                flgrem_GL = float(line[:8].strip())
                                 line = old_file.next()
                             if 'FDGREM' in line:
-                                fdgrem_GL = line[:8].strip()
+                                fdgrem_GL = float(line[:8].strip())
                             else:
                                 er = "Error: FLGREM expected"
                                 raise Exception(er)
-        history['perc_live_removed'] = np.where(history['grazing_level']
-                                                == 'GL', flgrem_GL, flgrem_GLP)
-        history['perc_dead_removed'] = np.where(history['grazing_level']
-                                                == 'GL', fdgrem_GL, fdgrem_GLP)
+        
+        # fill in history with months where no grazing took place
+        history = cent.fill_schedule(history, first_rel_year, first_rel_month,
+                                     relative_empirical_year, empirical_month)
+        history['year'] = history['relative_year'] + start_year - 1
+        history['perc_live_removed'] = np.where(
+                                           history['grazing_level'] ==  'GL',
+                                           flgrem_GL, np.where(
+                                           history['grazing_level'] == 'GLP',
+                                           flgrem_GLP, 0.))
+        history['perc_dead_removed'] = np.where(
+                                           history['grazing_level'] == 'GL',
+                                           fdgrem_GL, np.where(
+                                           history['grazing_level'] == 'GLP',
+                                           fdgrem_GLP, 0.))
         # collect biomass for these months
-        history['year'] = history['relative_year'] + 2010
         history['date'] = history.year + history.month / 12.0
         history = history.round({'date': 2})
         final_sim = int(res_df.iloc[len(res_df) - 1].Iteration)
         output_file = os.path.join(site_dir,
                                'CENTURY_outputs_iteration{}'.format(final_sim),
                                '{}.lis'.format(site_name))
-        biomass_df = cent.read_CENTURY_outputs(
-                                          output_file,
-                                          math.floor(empirical_date - n_years),
-                                          math.floor(empirical_date))
+        biomass_df = cent.read_CENTURY_outputs(output_file, first_abs_year,
+                                               math.floor(empirical_date))
         biomass_df['time'] = biomass_df.index
         sum_df = history.merge(biomass_df, left_on='date', right_on='time',
                                how='inner')
         sum_df['site'] = site_name
         df_list.append(sum_df)
     summary_df = pd.concat(df_list)
-    summary_df.perc_live_removed = summary_df.perc_live_removed.convert_objects(
-                                                          convert_numeric=True)
-    summary_df.perc_dead_removed = summary_df.perc_dead_removed.convert_objects(
-                                                          convert_numeric=True)
     summary_df['live_rem'] = summary_df.aglivc * summary_df.perc_live_removed
     summary_df['dead_rem'] = summary_df.stdedc * summary_df.perc_dead_removed
     summary_df['total_rem'] = summary_df.live_rem + summary_df.dead_rem
@@ -263,5 +270,5 @@ if __name__ == "__main__":
     # run_baseline(site_csv)
     # combine_summary_files(site_csv)
     match_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Felicia\regional_veg_match_file.csv"
-    # back_calc_mgmt(match_csv)
+    back_calc_mgmt(match_csv)
     summarize_sch_wrapper(match_csv)
