@@ -16,7 +16,7 @@ def launch_model(input_dir, outdir, herb_csv, grass_csv):
         'start_year': 1993,
         'start_month': 1,
         'num_months': 204,
-        'mgmt_threshold': 0.5,
+        'mgmt_threshold': 0.8,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
         'outdir': outdir,
         'template_level': 'GH',
@@ -161,21 +161,21 @@ def launch_runs():
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs"
     outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/runs_10.18.16"
     for subbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
-        for anim_type in ['camelid']:  # ['cow', 'sheep', 'camelid']:
-            for sd_level in ['reclow']:  # , 'rechigh']:
+        for anim_type in ['cow', 'sheep', 'camelid']:
+            for sd_level in ['reclow', 'rechigh']:
                 out_dir = os.path.join(outer_dir, 's%d_%s_%s' %
                                        (subbasin, anim_type, sd_level))
                 grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' %
                                          subbasin)
                 herbivore_csv = os.path.join(input_dir, anim_type + '_' +
                                              sd_level + '_sd.csv')
-                # if not os.path.exists(out_dir):
-                try:
-                    launch_model(input_dir, out_dir, herbivore_csv,
-                                 grass_csv)
-                except:
-                    continue
-
+                if not os.path.exists(out_dir):
+                    try:
+                        launch_model(input_dir, out_dir, herbivore_csv,
+                                     grass_csv)
+                    except:
+                        continue
+                        
 def summarize_results():
     """Summarize results of plant calibration"""
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\plant_calibration\raw_results"
@@ -223,8 +223,8 @@ def rotation_marginal_value_table():
                    'perc_gain': [], 'total_delta_weight_kg': []}
     time_series_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_10.18.16"
     for anim_type in ['cow', 'sheep', 'camelid']:
-        for sd_level in ['high', 'low']:  # , 'ighrot', 'lowrot']:
-            for sbasin in [4, 15]:  # [1, 2, 3, 4, 5, 6, 7, 9]:               
+        for sd_level in ['high', 'low', 'ighrot', 'lowrot']:
+            for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:               
                 sum_csv = os.path.join(time_series_dir, 's%s_%s_%s.csv' % (
                                        sbasin, anim_type, sd_level))
                 sum_df = pandas.read_csv(sum_csv)  
@@ -239,8 +239,7 @@ def rotation_marginal_value_table():
                     sd_str = 'reclow'
                 density = sd_df.loc[sd_df['animal_level'] == (
                       '%s_%s' % (anim_type, sd_str))].stocking_density
-                start_wt = sum_df.iloc[0]['%s_kg' % anim_type] - \
-                               sum_df.iloc[0]['%s_gain_kg' % anim_type]
+                start_wt = sum_df.iloc[0]['%s_kg' % anim_type]
                 avg_yearly_gain_herd = avg_yearly_gain * float(density)
                 perc_gain = avg_yearly_gain / float(start_wt)
                 marginal_df['subbasin'].append(sbasin)
@@ -369,7 +368,7 @@ def calculate_rotated_time_series():
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\rotation_10.18.16"
     total_mos = 204
     duration = 4
-    for sd_level in ['rechigh', 'low']:
+    for sd_level in ['rechigh', 'reclow']:
         for anim_type in ['cow', 'sheep', 'camelid']:
             for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
                 p1_csv = os.path.join(outer_dir, 'raw_results',
@@ -435,10 +434,10 @@ def test_rotation():
     full = range(0, total_mos)
     duration = 4
     p1, p2 = generate_grz_month_pairs(duration, total_mos)
-    for anim_type in ['camelid']:  # ['cow', 'sheep', 'camelid']:
+    for anim_type in ['cow', 'sheep', 'camelid']:
         for sbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
             grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' % sbasin)
-            for sd_level in ['reclow']:  # , 'rechigh']:
+            for sd_level in ['reclow', 'rechigh']:
                 herb_csv = os.path.join(input_dir, anim_type + '_' +
                                                  sd_level + '_sd.csv')
                 for grz_months in [p1, p2]:  #, full]:
@@ -489,15 +488,14 @@ def identify_failed_simulations(outer_dir, num_months):
 
 if __name__ == "__main__":
     # test_rotation()
-    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\runs_10.18.16"
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\rotation_10.18.16\raw_results"
     num_months = 204
-    test_rotation()
-    # identify_failed_simulations(outer_dir, num_months)
+    # test_rotation()
     # collect_rotation_results()
     # identify_failed_simulations(outer_dir, num_months)
     # calculate_rotated_time_series()
-    launch_runs()
+    # launch_runs()
     # move_summary_files()
-    # rotation_marginal_value_table()
+    rotation_marginal_value_table()
     # calc_SWAT_inputs()
     

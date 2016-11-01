@@ -1,6 +1,6 @@
 # generate inputs for the forage model on regional properties, Laikipia
 
-import arcpy
+# import arcpy
 import pandas as pd
 import numpy as np
 import os
@@ -10,7 +10,7 @@ import tempfile
 from tempfile import mkstemp
 import shutil
 
-arcpy.CheckOutExtension("Spatial")
+# arcpy.CheckOutExtension("Spatial")
 
 def calculate_zonal_averages(raster_list, zonal_shp, save_as):
     """Calculate averages of the rasters in raster_list within zones
@@ -450,12 +450,12 @@ if __name__ == "__main__":
     # soil_table = calc_soil_table()
     soil_table = r"C:\Users\Ginger\Desktop\Soil_avg.csv"
     # join_site_lat_long(zonal_shp, soil_table)
-    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties"
+    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
     template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Golf_10.100"
     # write_site_files(template_100, soil_table, save_dir)
-    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Laikipia_grass_hist.sch"
-    template_extend = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Laikipia_grass_template.sch"
-    # make_sch_files(template_hist, template_extend, soil_table, save_dir)
+    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0_hist.sch"
+    template_extend = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0.sch"
+    make_sch_files(template_hist, template_extend, soil_table, save_dir)
     FEWS_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE"
     clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
     aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
@@ -474,5 +474,5 @@ if __name__ == "__main__":
     # generate_grass_csvs(template, input_dir)
     site_csv = os.path.join(input_dir, 'regional_properties.csv')
     # generate_site_csv(input_dir, site_csv)
-    remove_wth_from_sch(input_dir)
+    # remove_wth_from_sch(input_dir)
     
