@@ -228,6 +228,9 @@ def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
                                       start_year + 1)
         empirical_month = int(round((empirical_date - float(math.floor(
                                 empirical_date))) * 12))
+        if empirical_month == 0:
+            empirical_month = 12
+            relative_empirical_year = relative_empirical_year - 1
         first_rel_month, first_rel_year = cent.find_first_month_and_year(
                                                n_months, empirical_month,
                                                relative_empirical_year)
