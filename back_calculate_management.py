@@ -9,7 +9,7 @@ sys.path.append(
 import forage_century_link_utils as cent
 
 def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
-                              n_years, vary, live_or_total, threshold,
+                              n_months, vary, live_or_total, threshold,
                               max_iterations):
     """Calculate grazing history at a site by adding or removing grazing events
     and modifying grazing intensity until an empirical biomass target is
@@ -27,9 +27,9 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     graz_file = os.path.join(century_dir, "graz.100")
     output = site['name']  # + '_mod-manag'
           
-    # check that last block in schedule file includes >= n_years before
+    # check that last block in schedule file includes >= n_months before
     # empirical_date
-    cent.check_schedule(schedule_file, n_years, empirical_date)
+    cent.check_schedule(schedule_file, n_months, empirical_date)
 
     # write CENTURY batch file for spin-up simulation
     hist_bat = os.path.join(input_dir, (site['name'] + '_hist.bat'))
@@ -146,18 +146,16 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                             break
                     elif vary == 'schedule':
                         # add or remove scheduled grazing events
-                        target_dict = cent.find_target_month(increase_intensity,
-                                                             run_schedule,
-                                                             empirical_date,
-                                                             n_years)
+                        target_dict = cent.find_target_month(
+                                            increase_intensity, run_schedule,
+                                            empirical_date, n_months)
                         cent.modify_schedule(run_schedule, increase_intensity,
                                              target_dict, 'GL', out_dir,
                                              site['name'] + str(iter))
                     elif vary == 'both':
-                        target_dict = cent.find_target_month(increase_intensity,
-                                                             run_schedule,
-                                                             empirical_date,
-                                                             n_years)
+                        target_dict = cent.find_target_month(
+                                            increase_intensity, run_schedule,
+                                            empirical_date, n_months)
                         if target_dict:
                             # there are opportunities to modify the schedule
                             cent.modify_schedule(run_schedule,
