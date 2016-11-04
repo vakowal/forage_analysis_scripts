@@ -9,6 +9,10 @@ from osgeo import gdal
 import tempfile
 from tempfile import mkstemp
 import shutil
+import sys
+sys.path.append(
+ 'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+import forage_century_link_utils as cent
 
 # arcpy.CheckOutExtension("Spatial")
 
@@ -260,6 +264,37 @@ def remove_wth_from_sch(input_dir):
                         newfile.write(line)
         shutil.copyfile(abs_path, sch)
         os.remove(abs_path)
+
+def remove_grazing(input_dir, out_dir):
+    """Remove grazing events from schedules created to be input to the back-
+    calc management routine, so that they can be supplied as inputs to run
+    the simulation.  Grazing events are removed from the years 2014 and 2015,
+    and the block schedule here is assumed to start with 2011."""
+    
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
+    sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
+    sch_files = [os.path.join(input_dir, f) for f in sch_files]
+    for sch in sch_files:
+        schedule_df = cent.read_block_schedule(sch)
+        assert schedule_df.loc[0, 'block_start_year'] == 2011, """Schedule must
+                                                     adhere to expected form"""
+        fh, abs_path = mkstemp()
+        os.close(fh)
+        with open(abs_path, 'wb') as newfile:
+            with open(sch, 'rb') as old_file:
+                for line in old_file:
+                    if ' GRAZ' in line:
+                        if '4  ' in line or '5  ' in line:
+                            line = old_file.next()
+                        else:
+                            newfile.write(line)
+                    else:
+                        newfile.write(line)
+        new_sch = os.path.join(out_dir, os.path.basename(sch))
+        shutil.copyfile(abs_path, new_sch)
+        os.remove(abs_path)
     
 def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
     """Make a table of max and min monthly temperature for points which are the
@@ -455,7 +490,7 @@ if __name__ == "__main__":
     # write_site_files(template_100, soil_table, save_dir)
     template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0_hist.sch"
     template_extend = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0.sch"
-    make_sch_files(template_hist, template_extend, soil_table, save_dir)
+    # make_sch_files(template_hist, template_extend, soil_table, save_dir)
     FEWS_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE"
     clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
     aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
@@ -475,4 +510,6 @@ if __name__ == "__main__":
     site_csv = os.path.join(input_dir, 'regional_properties.csv')
     # generate_site_csv(input_dir, site_csv)
     # remove_wth_from_sch(input_dir)
-    
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\empty_2014_2015"
+    remove_grazing(input_dir, out_dir)
