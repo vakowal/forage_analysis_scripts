@@ -202,7 +202,30 @@ def summarize_as_array(points_file, x_field, y_field, gps_metadata_file,
                 # match = match.drop_duplicates([])
     # keep a running tally of number of each animal type
     
-                                              
+def dung_around_points(points_file, x_field, y_field, result_dir, distance):
+    """calculate animal density with "distance" km from the points in
+    "points_file", from dung records collected at veg transects."""
+    
+    dung_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Kenya_ticks_project_specific\OPC_dung_analysis\dung_summary.csv"
+    dung_df = pd.read_csv(dung_csv)
+    
+    points_data = read_point_data(points_file)
+    for v_row in xrange(len(points_data)):
+        if points_data.iloc[v_row][x_field] is None or \
+                                points_data.iloc[v_row][y_field] is None:
+            continue
+        point_name = points_data.iloc[v_row].Name
+        x1 = float(points_data.iloc[v_row][x_field])
+        y1 = float(points_data.iloc[v_row][y_field])
+        
+        match = find_matched_records(x1, y1, dung_df, distance)  # match: records within distance
+        match['Date'] = pd.to_datetime(match['Date'], format='%d-%b-%y')
+        match['Year'] = (pd.DatetimeIndex(match['Date'])).year.astype(str)
+        save_as = os.path.join(result_dir,
+                               "dung_{}km_{}.csv".format(distance, point_name))
+        match.to_csv(save_as, index=False)
+        
+    
 def summarize_density(points_file, x_field, y_field, gps_metadata_file,
                       GPS_datafile, outerdir, result_dir, distance):
     """Calculate the density of animals within a given distance of points. For
@@ -694,28 +717,10 @@ def check_for_missing_records(GPS_datafile, gps_metadata_file, result_dir):
     missing_records_df = missing_records_df.drop_duplicates()
     filename = 'missing_records.csv'
     missing_records_df.to_csv(os.path.join(result_dir, filename))
+
+def GPS_dung_wrapper():
+    """wrapper to call correlate_GPS_dung at several distances and lag days."""
     
-if __name__ == "__main__":
-    outerdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/2015'
-    # GPS_data = combine_GPS_files(outerdir)
-    # points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
-    # result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
-    datadir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations_10.5.16'
-    weather_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
-    gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
-    veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"
-    # distance = 2.
-    GPS_datafile = os.path.join(outerdir, "data_combined.csv")
-    spray_race_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\spray_race_coordinates.csv"
-    # result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_spray_races"
-    # GPS_data.to_csv(GPS_datafile)
-    # points_file = os.path.join(outerdir, '1km_grid0.csv')
-    # x_field = "POINT_X"
-    # y_field = "POINT_Y"
-    x_field = "Long"
-    y_field = "Lat"
-    # summarize_density(spray_race_csv, x_field, y_field, gps_metadata_file,
-                      # GPS_datafile, outerdir, result_dir, distance)
     points_file = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_bovid_dung_sum.csv"
     result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\OPC_dung_analysis\correlation_with_GPS_records"
     distance_list = [0.1, 0.2, 0.3, 0.5]
@@ -728,4 +733,28 @@ if __name__ == "__main__":
                 correlate_GPS_dung(points_file, x_field, y_field,
                                    gps_metadata_file, GPS_datafile, outerdir,
                                    result_dir, distance, lag_days)
-                               
+
+if __name__ == "__main__":
+    outerdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/2015'
+    # GPS_data = combine_GPS_files(outerdir)
+    # points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/veg_2014_metadata.csv"
+    # result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_weather_stations"
+    datadir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_weather_stations_10.5.16'
+    points_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/Climate/OPC_weather_stations_coordinates.csv"
+    gps_metadata_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/GPS_data/GPS_metadata.csv"
+    veg_result_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Sharon/From_Sharon_5.29.15/Matched_GPS_records/Matched_with_veg_transects"
+    distance = 2.
+    GPS_datafile = os.path.join(outerdir, "data_combined.csv")
+    spray_race_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\spray_race_coordinates.csv"
+    # result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\From_Sharon_5.29.15\Matched_GPS_records\Matched_with_spray_races"
+    # GPS_data.to_csv(GPS_datafile)
+    x_field = "POINT_X"
+    y_field = "POINT_Y"
+    # x_field = "Long"
+    # y_field = "Lat"
+    # summarize_density(spray_race_csv, x_field, y_field, gps_metadata_file,
+                      # GPS_datafile, outerdir, result_dir, distance)
+
+    result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Kenya_ticks_project_specific\OPC_dung_analysis\OPC_weather_stations"
+    dung_around_points(points_file, x_field, y_field, result_dir, distance)
+    
