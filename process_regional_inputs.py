@@ -1,6 +1,6 @@
 # generate inputs for the forage model on regional properties, Laikipia
 
-# import arcpy
+import arcpy
 import pandas as pd
 import numpy as np
 import os
@@ -14,8 +14,69 @@ sys.path.append(
  'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
 import forage_century_link_utils as cent
 
-# arcpy.CheckOutExtension("Spatial")
+arcpy.CheckOutExtension("Spatial")
 
+def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
+    """Calculate average annual precipitation within properties identified by
+    zonal_shp.  raster_dir should identify the folder of rasters, one for each
+    month.  Save the table as save_as."""
+    
+    mosaicdir = os.path.join(raster_dir, "mosaic")
+    if not os.path.exists(mosaicdir):
+        os.makedirs(mosaicdir)
+        
+    sumdir = os.path.join(raster_dir, "sum")
+    if not os.path.exists(sumdir):
+        os.makedirs(sumdir)
+    
+    for m in range(1, 13):
+        inputs = [os.path.join(raster_dir, "prec{}_27.tif".format(m)),
+                  os.path.join(raster_dir, "prec{}_37.tif".format(m))]
+        save_name = "mosaic_prec{}.tif".format(m)
+        if not os.path.isfile(os.path.join(mosaicdir, save_name)):
+            arcpy.MosaicToNewRaster_management(inputs, mosaicdir, save_name, 
+                                                   "", "32_BIT_FLOAT", "", 1,
+                                                   "LAST", "")
+                                               
+    def sum_rasters(raster_list, save_as, cell_size):
+        def sum_op(*rasters):
+            return np.sum(np.array(rasters), axis=0)
+        nodata = 9999
+        pygeoprocessing.geoprocessing.vectorize_datasets(
+                raster_list, sum_op, save_as,
+                gdal.GDT_UInt16, nodata, cell_size, "union",
+                dataset_to_align_index=0, assert_datasets_projected=False,
+                vectorize_op=False, datasets_are_pre_aligned=True)
+    
+    raster_list = [os.path.join(mosaicdir, f) for f in os.listdir(mosaicdir)
+                   if f.endswith('.tif')]
+    cell_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
+                                                                raster_list[0])
+    sum_raster_name = os.path.join(sumdir, 'sum.tif')
+    if not os.path.isfile(sum_raster_name):
+        sum_rasters(raster_list, sum_raster_name, cell_size)
+    
+    # average annual precip within properties
+    # calculate_zonal_averages([sum_raster_name], zonal_shp, save_as)
+    
+    # average annual precip at property centroids
+    tempdir = tempfile.mkdtemp()
+    point_shp = os.path.join(tempdir, 'centroid.shp')
+    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    rasters = [sum_raster_name]
+    field_list = ['ann_precip']
+    ex_list = zip(rasters, field_list)
+    arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+    field_list.insert(0, 'FID')
+    ann_precip_dict = {'site': [], 'avg_annual_precip': []}
+    with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
+        for row in cursor:
+            site = row[0]
+            ann_precip_dict['site'].append(site)
+            ann_precip_dict['avg_annual_precip'].append(row[1])
+    temp_df = pd.DataFrame.from_dict(ann_precip_dict)
+    temp_df.to_csv(save_as, index=False)
+    
 def calculate_zonal_averages(raster_list, zonal_shp, save_as):
     """Calculate averages of the rasters in raster_list within zones
     identified by the zonal_shp.  Store averages in table with a row for
@@ -64,6 +125,23 @@ def calculate_zonal_averages(raster_list, zonal_shp, save_as):
         print "Warning, temp files cannot be deleted"
         pass
 
+def calc_soil_from_points(point_shp, save_as):
+    """Make the table containing soil inputs at each point."""
+    
+    arcpy.env.overwriteOutput = 1
+    soil_dir = point_shp  # ???
+    f_list = os.listdir(soil_dir)
+    ex_list = []
+    for f in f_list:
+        field_name = field_name #?????
+        field_list.append(field_name)
+        raster_name = os.path.join(soil_dir, f)
+        ex_list.append([raster_name, field_name])
+    
+    # extract monthly values to each point
+    arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+    
+    
 def calc_soil_table(zonal_shp, save_as):
     """Make the table containing soil inputs for each property."""
     
@@ -479,8 +557,11 @@ def generate_site_csv(input_dir, save_as):
         site_dict['lat'].append(lat)
     site_df = pd.DataFrame(site_dict)
     site_df.to_csv(save_as, index=False)
+
+def laikipia_regional_properties_workflow():
+    """Nasty list of datasets and functions performed to process inputs for
+    regional properties in Laikipia"""
     
-if __name__ == "__main__":
     zonal_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016.shp"
     # soil_table = calc_soil_table()
     soil_table = r"C:\Users\Ginger\Desktop\Soil_avg.csv"
@@ -512,4 +593,28 @@ if __name__ == "__main__":
     # remove_wth_from_sch(input_dir)
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
     out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\empty_2014_2015"
-    remove_grazing(input_dir, out_dir)
+    # remove_grazing(input_dir, out_dir)
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\regional_average_temp_centroid.csv"
+    calculate_total_annual_precip(worldclim_precip_folder, zonal_shp, save_as)
+    
+def canete_regular_grid_workflow():
+    """Generate inputs to run CENTURY on a regular grid covering the
+    intervention area in the Canete basin, Peru"""
+    
+    points_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\CGIAR\Peru\climate_and_soil\worldclim_point_intervention_area.shp" # points at which to run the sim
+    soil_table = calc_soil_table(points_shp, r"C:\Users\Ginger\Desktop\Soil_avg.csv")
+    soil_table = r"C:\Users\Ginger\Desktop\Soil_avg.csv"
+    # join_site_lat_long(zonal_shp, soil_table)
+    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
+    template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Golf_10.100"
+    # write_site_files(template_100, soil_table, save_dir)
+    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0_hist.sch"
+    template_extend = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0.sch"
+    # make_sch_files(template_hist, template_extend, soil_table, save_dir)
+    FEWS_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE"
+    clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
+    aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
+    
+    
+if __name__ == "__main__":
+    laikipia_regional_properties_workflow()
