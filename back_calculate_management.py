@@ -12,12 +12,14 @@ import forage_century_link_utils as cent
 
 def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                               n_months, vary, live_or_total, threshold,
-                              max_iterations):
+                              max_iterations, template_level):
     """Calculate grazing history at a site by adding or removing grazing events
     and modifying grazing intensity until an empirical biomass target is
     reached.  Biomass should be specified in g per square m.  Empirical date
     should be specified as a "CENTURY date": 2012.00 is December of 2011;
-    2012.08 is January of 2012, etc. Two decimal points."""
+    2012.08 is January of 2012, etc. Two decimal points.  Template level is the
+    grazing level in the graz.100 file that will be modified if intensity is
+    modified."""
     
     cent.set_century_directory(century_dir)
     empirical_biomass = site['biomass']
@@ -139,7 +141,8 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                         # TODO the grazing level here should reflect what's in
                         # the schedule file
                         success = cent.modify_intensity(increase_intensity,
-                                                        graz_file, 'GLP',
+                                                        graz_file,
+                                                        template_level,
                                                         out_dir, site['name']
                                                         + str(iter))
                         if not success:
@@ -152,8 +155,8 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                                             increase_intensity, run_schedule,
                                             empirical_date, n_months)
                         cent.modify_schedule(run_schedule, increase_intensity,
-                                             target_dict, 'GL', out_dir,
-                                             site['name'] + str(iter))
+                                             target_dict, template_level,
+                                             out_dir, site['name'] + str(iter))
                     elif vary == 'both':
                         target_dict = cent.find_target_month(
                                             increase_intensity, run_schedule,
@@ -162,12 +165,14 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                             # there are opportunities to modify the schedule
                             cent.modify_schedule(run_schedule,
                                                  increase_intensity,
-                                                 target_dict, 'GL', out_dir,
+                                                 target_dict, template_level,
+                                                 out_dir,
                                                  site['name'] + str(iter))
                         else:
                             # no opportunities to modify the schedule exist
                             success = cent.modify_intensity(increase_intensity,
-                                                            graz_file, 'GL',
+                                                            graz_file,
+                                                            template_level,
                                                             out_dir,
                                                             site['name'] +
                                                             str(iter))
