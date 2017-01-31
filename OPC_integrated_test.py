@@ -29,6 +29,7 @@ def back_calc_match_last_meas():
     threshold = 10.0  # must match biomass within this many g per sq m
     max_iterations = 40  # number of times to try
     fix_file = 'drytrpfi.100'
+    template_level = 'GLP'
 
     site_list = sites_definition('last')
     for site in site_list:
@@ -37,7 +38,7 @@ def back_calc_match_last_meas():
             os.makedirs(out_dir_site) 
             backcalc.back_calculate_management(site, input_dir, century_dir, out_dir_site,
                                       fix_file, n_months, vary, live_or_total,
-                                      threshold, max_iterations)
+                                      threshold, max_iterations, template_level)
 
 def back_calc_match_first_meas():
     """Use the back-calc management routine to match the first empirical biomass
@@ -110,13 +111,16 @@ def sites_definition(first_or_last):
         serat = {'name': 'Serat', 'biomass': 100.08, 'date': 2015.33}
         rongai = {'name': 'Rongai', 'biomass': 175.92, 'date': 2015.33}
     elif first_or_last == 'last':
+        golf7 = {'name': 'Golf_7', 'biomass': 152.35, 'date': 2015.33}
+        sirima = {'name': 'Sirima', 'biomass': 190.42, 'date': 2016.00}
         kamok = {'name': 'Kamok', 'biomass': 119.72, 'date': 2015.92}
         loidien = {'name': 'Loidien', 'biomass': 93.74, 'date': 2015.92}
         research = {'name': 'Research', 'biomass': 276.03, 'date': 2016.00}
         loirugurugu = {'name': 'Loirugu', 'biomass': 96.76, 'date': 2015.75}
         serat = {'name': 'Serat', 'biomass': 145.7, 'date': 2016.00}
         rongai = {'name': 'Rongai', 'biomass': 165.64, 'date': 2016.00}
-    site_list = [kamok, loidien, research, loirugurugu, serat, rongai]
+    site_list = [golf7, sirima, kamok, loidien, research, loirugurugu, serat,
+                 rongai]
     return site_list
 
 def empirical_series_definition():
@@ -319,18 +323,46 @@ def summarize_sch_wrapper():
                                       summary_file)
                                               
     outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC_integrated_test\back_calc_match_first_measurement"
-    site_list = sites_definition('first')
+    # site_list = sites_definition('first')
     raw_file = os.path.join(outerdir, 'schedule_summary.csv')
     summary_file = os.path.join(outerdir, 'percent_removed.csv')
     # backcalc.summarize_calc_schedules(site_list, n_months, input_dir, 
                                       # century_dir, outerdir, raw_file,
                                       # summary_file)
-                                              
+
+def summarize_match(save_as):
+    """summarize the results of back-calc management routine by collecting
+    the final comparison of empirical vs simulated biomass from each site
+    where the routine was run."""
+    
+    sum_dict = {'site': [], 'g_m2': [], 'sim_vs_emp': []}
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\back_calc_match_last_measurement"
+    site_list = sites_definition('last')
+    for site in site_list:
+        site_name = site['name']
+        site_dir = os.path.join(out_dir, site_name)
+        result_csv = os.path.join(site_dir,
+                                  'modify_management_summary_{}.csv'.
+                                  format(site_name))
+        res_df = pandas.read_csv(result_csv)
+        sum_dict['site'].extend([site_name] * 2)
+        sum_dict['g_m2'].append(res_df.iloc[len(res_df) - 1].
+                                Simulated_biomass)
+        sum_dict['sim_vs_emp'].append('sim')
+        sum_dict['g_m2'].append(res_df.iloc[len(res_df) - 1].
+                                Empirical_biomass)
+        sum_dict['sim_vs_emp'].append('emp')
+    sum_df = pandas.DataFrame(sum_dict)
+    sum_df.to_csv(save_as)
+    
 if __name__ == "__main__":
     # run_empirical_stocking_density()
-    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
+    # save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Verification_calculations\OPC_integrated_test\empirical_stocking_density"
     # summarize_comparison(save_dir)
     # combine_summary_files()
     # back_calc_match_first_meas()
     # back_calc_match_last_meas()
-    summarize_sch_wrapper()
+    # summarize_sch_wrapper()
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\back_calc_match_last_measurement\match_summary.csv"
+    summarize_match(save_as)
+    
