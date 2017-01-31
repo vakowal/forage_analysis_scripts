@@ -74,10 +74,14 @@ def find_matched_records(x1, y1, GPS_data, distance):
 
     xdist = float(distance) / 111.321
     ydist = float(distance) / 110.567
-    match1 = GPS_data.loc[GPS_data['Longitude'] < (x1 + xdist)]
-    match2 = match1.loc[match1['Longitude'] > (x1 - xdist)]
-    match3 = match2.loc[match2['Latitude'] < (y1 + ydist)]
-    match4 = match3.loc[match3['Latitude'] > (y1 - ydist)]
+    long_min = x1 - xdist
+    long_max = x1 + xdist
+    lat_min = y1 - ydist
+    lat_max = y1 + ydist
+    match1 = GPS_data.loc[GPS_data['Longitude'] <= long_max]
+    match2 = match1.loc[match1['Longitude'] >= long_min]
+    match3 = match2.loc[match2['Latitude'] <= lat_max]
+    match4 = match3.loc[match3['Latitude'] >= lat_min]
     return match4
 
 def match_to_points(points_file, outerdir, result_dir, distance):
@@ -464,6 +468,7 @@ def correlate_GPS_dung(points_file, x_field, y_field, gps_metadata_file,
     """Make a data frame with cattle density from GPS records within distance
     and lag_days days of each veg (dung) measurement."""
     
+    num_matched = 0
     missing_records = {'abbreviation': [],
                        'unit_no': [],
                        'rotation': [],
@@ -513,6 +518,7 @@ def correlate_GPS_dung(points_file, x_field, y_field, gps_metadata_file,
         match = find_matched_records(x1, y1, GPS_data, distance)  # match: records within distance
         # narrow match by date (within lag_days of the point date)
         if len(match) > 0:
+            num_matched += 1
             end_date = points_data.iloc[v_row].Date
             start_date = end_date - pd.Timedelta('{} days'.format(lag_days))
             date_match = match.loc[(match['Date'] > start_date) & 
@@ -659,6 +665,7 @@ def correlate_GPS_dung(points_file, x_field, y_field, gps_metadata_file,
     animal_density_df.to_csv(os.path.join(result_dir,
                                           "GPS_density_{}km_{}days.csv".format(
                                           distance, lag_days)), index=False)
+    print "{} out of {} transects had cattle detected within {} km, irrespective of date".format(num_matched, len(points_data), distance)
     
 def read_data(GPS_datafile, gps_metadata_file):
     """Read data and metadata and coerce column types to match each other."""
@@ -722,7 +729,7 @@ def GPS_dung_wrapper():
     """wrapper to call correlate_GPS_dung at several distances and lag days."""
     
     points_file = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\OPC_bovid_dung_sum.csv"
-    result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\OPC_dung_analysis\correlation_with_GPS_records"
+    result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Kenya_ticks_project_specific\OPC_dung_analysis\correlation_with_GPS_records"
     distance_list = [0.1, 0.2, 0.3, 0.5]
     lag_list = [28, 35, 42]
     for distance in distance_list:
@@ -756,5 +763,6 @@ if __name__ == "__main__":
                       # GPS_datafile, outerdir, result_dir, distance)
 
     result_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\Kenya_ticks_project_specific\OPC_dung_analysis\OPC_weather_stations"
-    dung_around_points(points_file, x_field, y_field, result_dir, distance)
     
+    dung_around_points(points_file, x_field, y_field, result_dir, distance)
+    # GPS_dung_wrapper()
