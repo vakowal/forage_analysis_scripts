@@ -11,8 +11,7 @@ import forage_century_link_utils as cent
 
 def calc_n_mult(forage_args, target):
     """calculate N multiplier for a grass to achieve target cp content. 
-    Target should be supplied as a float between 0 and 1.  sim_filename should
-    be a filepath to the output file ending in '.lis.'"""
+    Target should be supplied as a float between 0 and 1."""
     
     # verify that N multiplier is initially set to 1
     grass_df = pd.read_csv(forage_args['grass_csv'])

@@ -249,7 +249,8 @@ def calc_n_mult(forage_args, target):
                 year = (final_month / 12) + forage_args[u'start_year']
         else:
             month = final_month
-            year = (step / 12) + forage_args[u'start_year']
+            year = ((forage_args['num_months'] - 1) / 12) + \
+                                                     forage_args[u'start_year']
         intermediate_dir = os.path.join(args_copy['outdir'],
                                         'CENTURY_outputs_m%d_y%d' % (month, year))
         sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
