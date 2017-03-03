@@ -222,6 +222,7 @@ def calc_n_mult(forage_args, target):
     crude protein of live grass. Target should be supplied as a float between 0
     and 1."""
     
+    # TODO THIS VERSION IS BUGGY!! USE THE VERSION IN OPC_INTEGRATED_TEST.PY
     # verify that N multiplier is initially set to 1
     grass_df = pd.read_csv(forage_args['grass_csv'])
     grass_label = grass_df.iloc[0].label

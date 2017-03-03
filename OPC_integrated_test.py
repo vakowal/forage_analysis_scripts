@@ -49,6 +49,7 @@ def calculate_new_growth(run_dir, grass_csv, year):
     live_biomass = sub_df.aglivc.values * 2.5
     stded_biomass = sub_df.stdedc.values * 2.5
     biomass = live_biomass + stded_biomass
+    perc_green = (live_biomass / biomass).tolist()
     n_content_live = (sub_df['aglive(1)'].values) * 6.25 / live_biomass
     n_content_live = np.multiply(n_content_live, n_mult).tolist()
     n_content_dead = (sub_df['stdede(1)'].values) * 6.25 / stded_biomass
@@ -59,18 +60,8 @@ def calculate_new_growth(run_dir, grass_csv, year):
     weighted_sum = [a + b for a, b in zip(live_weighted, dead_weighted)]
     weighted_cp_avg = [a / b for a, b in zip(weighted_sum, biomass)]
     results_list = [new_growth, live_biomass, biomass, n_content_live,
-                    weighted_cp_avg]
+                    weighted_cp_avg, perc_green]
     return results_list
-
-def initialize_n_mult(csv_file):
-    """Set N_multiplier to 1."""
-    
-    df = pandas.read_csv(csv_file)
-    df['index'] = 0
-    df = df.set_index(['index'])
-    assert len(df) == 1, "We can only handle one grass type"
-    df.set_value(0, 'N_multiplier', 1)
-    df.to_csv(csv_file)
 
 def calc_n_mult(forage_args, target):
     """Calculate N multiplier for a grass to achieve target crude protein
@@ -78,72 +69,83 @@ def calc_n_mult(forage_args, target):
     crude protein of live grass. Target should be supplied as a float between 0
     and 1."""
     
-    # verify that N multiplier is initially set to 1
+    tolerance = 0.001  # must be within this proportion of target value
     grass_df = pandas.read_csv(forage_args['grass_csv'])
     grass_label = grass_df.iloc[0].label
-    current_value = grass_df.iloc[0].N_multiplier
-    assert current_value == 1, "Initial value for N multiplier must be 1"
-    
-    # launch model to get initial crude protein content
+    # args copy to launch model to calculate n_mult
     args_copy = forage_args.copy()
     args_copy['outdir'] = os.path.join(os.path.dirname(forage_args['outdir']),
                                        '{}_n_mult_calc'.format(
                                       os.path.basename(forage_args['outdir'])))
-    i = 1
-    while i < 3:  # do this twice, to better approximate n_mult
-        forage.execute(args_copy)
-        
-        # find output
-        final_month = forage_args[u'start_month'] + forage_args['num_months'] - 1
-        if final_month > 12:
-            mod = final_month % 12
-            if mod == 0:
-                month = 12
-                year = (final_month / 12) + forage_args[u'start_year'] - 1
-            else:
-                month = mod
-                year = (final_month / 12) + forage_args[u'start_year']
+    # find correct output time period
+    final_month = forage_args[u'start_month'] + forage_args['num_months'] - 1
+    if final_month > 12:
+        mod = final_month % 12
+        if mod == 0:
+            month = 12
+            year = (final_month / 12) + forage_args[u'start_year'] - 1
         else:
-            month = final_month
-            year = ((forage_args['num_months'] - 1) / 12) + forage_args[u'start_year']
-        intermediate_dir = os.path.join(args_copy['outdir'],
-                                        'CENTURY_outputs_m%d_y%d' % (month, year))
-        sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
-        
+            month = mod
+            year = (final_month / 12) + forage_args[u'start_year']
+    else:
+        month = final_month
+        year = ((forage_args['num_months'] - 1) / 12) + forage_args[u'start_year']
+    intermediate_dir = os.path.join(args_copy['outdir'],
+                                    'CENTURY_outputs_m%d_y%d' % (month, year))
+    sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
+    first_year = forage_args['start_year']
+    last_year = year
+    
+    def get_raw_cp_green():
         # calculate n multiplier to achieve target
-        first_year = forage_args['start_year']
-        last_year = year
         outputs = cent.read_CENTURY_outputs(sim_output, first_year, last_year)
         outputs.drop_duplicates(inplace=True)
-        cp_green = np.mean(outputs.aglive1 / outputs.aglivc)
-        n_mult = '%.2f' % (target / cp_green)
-
+        
+        # restrict to months of the simulation
+        first_month = forage_args[u'start_month']
+        start_date = first_year + float('%.2f' % (first_month / 12.))
+        end_date = last_year + float('%.2f' % (month / 12.))
+        outputs = outputs[(outputs.index >= start_date)]
+        outputs = outputs[(outputs.index <= end_date)]
+        return np.mean(outputs.aglive1 / outputs.aglivc)
+    
+    def set_n_mult():
         # edit grass csv to reflect calculated n_mult
         grass_df = pandas.read_csv(forage_args['grass_csv'])
         grass_df.N_multiplier = grass_df.N_multiplier.astype(float)
         grass_df = grass_df.set_value(0, 'N_multiplier', float(n_mult))
         grass_df = grass_df.set_index('label')
         grass_df.to_csv(forage_args['grass_csv'])
-        i = i + 1
+    
+    n_mult = 1
+    set_n_mult()
+    forage.execute(args_copy)
+    cp_green = get_raw_cp_green()
+    diff = abs(target - (n_mult * cp_green))
+    while diff > tolerance:
+        n_mult = '%.10f' % (target / cp_green)
+        set_n_mult()
+        forage.execute(args_copy)
+        cp_green = get_raw_cp_green()
+        diff = abs(target - (float(n_mult) * cp_green))
 
 def stocking_density_percent_new_growth_test():
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\summary_old_herb_csv_old_sd.csv"
-    grass_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens\OPC_avg.csv"
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2013\growth_summary.csv"
+    grass_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens_2013\OPC_avg.csv"
     herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\herd_avg_uncalibrated.csv"
-    outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult"
-    start_year = 2014
-    end_year = 2015
+    outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2013"
     target = 0.14734
     sum_dict = {'stocking_density': [], 'year': [], 'month': [], 'label': [],
                 'biomass': []}
+    n_mult_dict = {'stocking_density': [], 'n_mult': []}
     forage_args = {
         'latitude': -0.0040,
         'prop_legume': 0.0,
         'steepness': 1.,
         'DOY': 1,
-        'start_year': 2014,
+        'start_year': 2013,
         'start_month': 11,
-        'num_months': 14,
+        'num_months': 26,
         'mgmt_threshold': 0.1,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
         'template_level': 'GL',
@@ -153,27 +155,31 @@ def stocking_density_percent_new_growth_test():
         'herbivore_csv': herb_csv,
         'grass_csv': grass_csv,
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
-        'input_dir': r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens",
+        'input_dir': r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens_2013",
         'restart_yearly': 0,
         'diet_verbose': 0,
         'restart_monthly': 1,
     }
     for sd in [0.1, 0.45, 0.8]:
+        n_mult_dict['stocking_density'].append(sd)
         modify_stocking_density(herb_csv, sd)
         outdir = os.path.join(outer_out_dir, 'cattle_%s' % str(sd))
         forage_args['outdir'] = outdir
-        initialize_n_mult(grass_csv)
         calc_n_mult(forage_args, target)
+        grass_df = pandas.read_csv(grass_csv)
+        n_mult = grass_df.iloc[0].N_multiplier
+        n_mult_dict['n_mult'].append(n_mult)
         forage.execute(forage_args)
-        for year in [2014, 2015]:   
-            sum_dict['year'] = sum_dict['year'] + [year] * 84
-            sum_dict['month'] = sum_dict['month'] + (range(1, 13) * 7)
-            sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 84
+        for year in [2013, 2014, 2015]:   
+            sum_dict['year'] = sum_dict['year'] + [year] * 96
+            sum_dict['month'] = sum_dict['month'] + (range(1, 13) * 8)
+            sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 96
             sum_dict['label'] = sum_dict['label'] + ['new_growth'] * 12 + \
                                                     ['live_biomass'] * 12 + \
                                                     ['total_biomass'] * 12 + \
                                                     ['n_content_live'] * 12 + \
                                                     ['weighted_cp_avg'] * 12 + \
+                                                    ['perc_green'] * 12 + \
                                                     ['liveweight_gain'] * 12 + \
                                                     ['liveweight_gain_herd'] * 12
             new_growth_results_list = calculate_new_growth(outdir, grass_csv, year)
@@ -182,20 +188,27 @@ def stocking_density_percent_new_growth_test():
             biomass = new_growth_results_list[2].tolist()
             n_content_live = new_growth_results_list[3]
             weighted_cp_avg = new_growth_results_list[4]
-            
-            grass_df = pandas.read_csv(grass_csv)
-            n_mult = grass_df.iloc[0].N_multiplier
+            perc_green = new_growth_results_list[5]
             n_content = np.multiply(n_content_live, n_mult).tolist()
             weight_df = pandas.read_csv(os.path.join(outdir, 'summary_results.csv'))
-            weight_df = weight_df.loc[weight_df['year'] == 2015]
+            weight_df = weight_df.loc[weight_df['year'] == year]
             gain = weight_df.cattle_gain_kg.values.tolist()
+            if len(gain) < 12:
+                gain = [0] * (12 - len(gain)) + gain
             gain_herd = np.multiply(gain, sd).tolist()
             sum_dict['biomass'] = sum_dict['biomass'] + new_growth + \
                                     live_biomass + \
                                     biomass + n_content_live + \
-                                    weighted_cp_avg + gain + gain_herd
-    sum_df = pandas.DataFrame(sum_dict)
-    sum_df.to_csv(save_as, index=False)
+                                    weighted_cp_avg + perc_green + gain + \
+                                    gain_herd
+    try:
+        sum_df = pandas.DataFrame(sum_dict)
+        sum_df.to_csv(save_as, index=False)
+        n_mult_df = pandas.DataFrame(n_mult_dict)
+        n_mult_df.to_csv(r"C:\Users\Ginger\Desktop\n_mult.csv")
+    except:
+        import pdb; pdb.set_trace()
+    
 
 def back_calc_match_last_meas():
     """Use the back-calc management routine to match the last empirical biomass
