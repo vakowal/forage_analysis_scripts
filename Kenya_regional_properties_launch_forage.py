@@ -88,6 +88,42 @@ def summarize_offtake():
     summary_csv = os.path.join(outer_dir, 'offtake_summary.csv')
     df.to_csv(summary_csv)
 
+def summarize_remaining_biomass():
+    """Summarize monthly biomass remaining at each site, assuming allowable use
+    of 50% (cows + other grazers can offtake 50%). Calculate how many gazelle
+    equivalents would be supported by forage remaining after cows offtake."""
+    
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
+    cp_opts = ['varying', 'constant']
+    marg_dict = {'site': [], 'month': [], 'year': [], 'remaining_biomass': [],
+                 'gazelle_equivalents': [], 'cp_option': []}
+    for site in site_list:
+        marg_dict['site'].extend([site['name']] * 48)
+        for cp_o in cp_opts:
+            inner_folder_name = "herd_avg_uncalibrated_0.3_{}_cp_GL".format(cp_o)
+            inner_dir = os.path.join(outer_dir, inner_folder_name)
+            outdir = os.path.join(inner_dir,
+                                  'site_{:d}'.format(int(site['name'])))
+            sum_csv = os.path.join(outdir, 'summary_results.csv')
+            sum_df = pd.read_csv(sum_csv)
+            subset = sum_df.loc[sum_df['year'] > 2013]
+            subset.total_biomass = subset['{:.0f}_green_kgha'.format(site['name'])] + \
+                                   subset['{:.0f}_dead_kgha'.format(site['name'])]
+            subset.available = subset.total_biomass / 2
+            subset.remaining = subset.available - subset.total_offtake
+            gazelle_equiv = subset.remaining / 56.29
+            marg_dict['month'].extend(subset.month.tolist())
+            marg_dict['year'].extend(subset.year.tolist())
+            marg_dict['remaining_biomass'].extend(subset.remaining.tolist())
+            marg_dict['gazelle_equivalents'].extend(gazelle_equiv.tolist())
+            marg_dict['cp_option'].extend([cp_o] * 24)
+    df = pd.DataFrame(marg_dict)
+    summary_csv = os.path.join(outer_dir, 'biomass_remaining_summary.csv')
+    df.to_csv(summary_csv)
+    
 def run_preset_densities():
     """Run a series of stocking densities at each regional property."""
     
@@ -650,6 +686,7 @@ if __name__ == "__main__":
     # summarize_sch_wrapper(match_csv)
     # save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014\back_calc_match_summary_2015.csv"
     # summarize_match(match_csv, save_as)
-    run_preset_densities()
+    # run_preset_densities()
     # summarize_offtake()
+    summarize_remaining_biomass()
     
