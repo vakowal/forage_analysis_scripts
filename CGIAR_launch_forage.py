@@ -122,7 +122,7 @@ def erase_intermediate_files(outerdir):
 
 def launch_baseline():
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_inputs"
-    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/rotation_high_sd/raw_results"
+    outer_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/CGIAR/Peru/Forage_model_results/zero_sd/raw_results"
     forage_args = {
         'latitude': -12.55,
         'prop_legume': 0.0,
@@ -146,7 +146,7 @@ def launch_baseline():
         'diet_verbose': "",
         'restart_monthly': 0,
     }
-    for subbasin in [4]:  # range(1, 15):
+    for subbasin in [1, 2, 3, 4, 5, 6, 7, 9]:
         grass_csv = os.path.join(input_dir, 'Pajonal_%d.csv' %
                                  subbasin)
         herbivore_csv = os.path.join(input_dir, 'zero_sd.csv')
@@ -300,8 +300,8 @@ def collect_rotation_results():
     df.to_csv(os.path.join(outer_dir, "comparison_8.25.16.csv"), index=False)
 
 def move_summary_files():
-    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\runs_10.18.16"
-    newdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_10.18.16"
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\zero_sd\raw_results"
+    newdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\CGIAR\Peru\Forage_model_results\biomass_time_series_zero_sd_11.16.16"
 
     if not os.path.exists(newdir):
         os.makedirs(newdir)
@@ -496,6 +496,7 @@ if __name__ == "__main__":
     # calculate_rotated_time_series()
     # launch_runs()
     # move_summary_files()
-    rotation_marginal_value_table()
+    # rotation_marginal_value_table()
     # calc_SWAT_inputs()
-    
+    # launch_baseline()
+    move_summary_files()

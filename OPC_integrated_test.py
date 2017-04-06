@@ -130,10 +130,10 @@ def calc_n_mult(forage_args, target):
         diff = abs(target - (float(n_mult) * cp_green))
 
 def stocking_density_percent_new_growth_test():
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2013\growth_summary.csv"
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2014\growth_summary.csv"
     grass_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens_2013\OPC_avg.csv"
     herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\herd_avg_uncalibrated.csv"
-    outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2013"
+    outer_out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\OPC\stocking_density_new_growth\n_mult_start_2014"
     target = 0.14734
     sum_dict = {'stocking_density': [], 'year': [], 'month': [], 'label': [],
                 'biomass': []}
@@ -143,9 +143,9 @@ def stocking_density_percent_new_growth_test():
         'prop_legume': 0.0,
         'steepness': 1.,
         'DOY': 1,
-        'start_year': 2013,
+        'start_year': 2014,
         'start_month': 11,
-        'num_months': 26,
+        'num_months': 14,
         'mgmt_threshold': 0.1,
         'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
         'template_level': 'GL',
@@ -155,7 +155,7 @@ def stocking_density_percent_new_growth_test():
         'herbivore_csv': herb_csv,
         'grass_csv': grass_csv,
         'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
-        'input_dir': r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens_2013",
+        'input_dir': r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\zero_dens",
         'restart_yearly': 0,
         'diet_verbose': 0,
         'restart_monthly': 1,
@@ -170,7 +170,7 @@ def stocking_density_percent_new_growth_test():
         n_mult = grass_df.iloc[0].N_multiplier
         n_mult_dict['n_mult'].append(n_mult)
         forage.execute(forage_args)
-        for year in [2013, 2014, 2015]:   
+        for year in [2014, 2015]:   
             sum_dict['year'] = sum_dict['year'] + [year] * 96
             sum_dict['month'] = sum_dict['month'] + (range(1, 13) * 8)
             sum_dict['stocking_density'] = sum_dict['stocking_density'] + [sd] * 96
