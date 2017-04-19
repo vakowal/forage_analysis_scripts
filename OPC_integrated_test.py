@@ -605,10 +605,13 @@ def summarize_match(save_as):
                                   'modify_management_summary_{}.csv'.
                                   format(site_name))
         res_df = pandas.read_csv(result_csv)
-        sum_dict['site'].extend([site_name] * 2)
+        sum_dict['site'].extend([site_name] * 3)
+        sum_dict['g_m2'].append(res_df.iloc[0].
+                                Simulated_biomass)
+        sum_dict['sim_vs_emp'].append('sim_default')
         sum_dict['g_m2'].append(res_df.iloc[len(res_df) - 1].
                                 Simulated_biomass)
-        sum_dict['sim_vs_emp'].append('sim')
+        sum_dict['sim_vs_emp'].append('sim_calc')
         sum_dict['g_m2'].append(res_df.iloc[len(res_df) - 1].
                                 Empirical_biomass)
         sum_dict['sim_vs_emp'].append('emp')
