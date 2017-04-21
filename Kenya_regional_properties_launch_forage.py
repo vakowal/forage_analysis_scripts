@@ -137,7 +137,7 @@ def run_preset_densities():
                  'total_yearly_delta_weight_kg_per_ha': []}
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
-    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\herd_avg_uncalibrated_constant_cp_GL" # herd_avg_uncalibrated_0.3_vary_cp"
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\herd_avg_uncalibrated_constant_cp_GL_est_densities"  # herd_avg_uncalibrated_constant_cp_GL" # herd_avg_uncalibrated_0.3_vary_cp"
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015"
     forage_args = default_forage_args()
     forage_args['user_define_protein'] = 1
@@ -145,47 +145,48 @@ def run_preset_densities():
     forage_args['herbivore_csv'] = template_herb_csv
     forage_args['restart_monthly'] = 1
     forage_args['template_level'] = 'GL'
-    for density in density_list:
+    # for density in density_list:
+    for site in site_list:
+        density = site['back_calc_avg_animals_per_ha']
+        # density = 0.3
+        outdir = os.path.join(outer_outdir,
+                              'site_{:d}_{}'.format(int(site['name']), density))
         modify_stocking_density(template_herb_csv, density)
-        for site in site_list:
-            # density = site['property_non_property_cattle_density']
-            # density = 0.3
-            outdir = os.path.join(outer_outdir,
-                                  'site_{:d}_{}'.format(int(site['name']), density))
-            succeeded = id_failed_simulation(outdir, forage_args['num_months'])
-            modify_stocking_density(template_herb_csv, density)
-            grass_csv = os.path.join(input_dir,
-                                     '{:d}.csv'.format(int(site['name'])))
-            # initialize_n_mult(grass_csv)
-            add_cp_to_grass_csv(grass_csv, target)
-            forage_args['grass_csv'] = grass_csv
-            forage_args['latitude'] = site['lat']
-            forage_args['outdir'] = outdir
-            if not succeeded:  # os.path.exists(outdir):
-                # calc_n_mult(forage_args, target)
-                try:
-                    forage.execute(forage_args)
-                except:
-                    import pdb; pdb.set_trace()
-                    continue
-            succeeded = id_failed_simulation(outdir, forage_args['num_months'])
-            if not succeeded:
-                failed.append('site_{:d}_{}_per_ha'.format(int(site['name']),
-                              density))
-            else:
-                sum_csv = os.path.join(outdir, 'summary_results.csv')
-                sum_df = pd.read_csv(sum_csv)
-                subset = sum_df.loc[sum_df['year'] > 2013]
-                grouped = subset.groupby('year')
-                avg_yearly_gain = (grouped.sum()['cattle_gain_kg']).mean()
-                start_wt = sum_df.iloc[0]['cattle_kg']
-                avg_yearly_gain_herd = avg_yearly_gain * float(density)
-                perc_gain = avg_yearly_gain / float(start_wt)
-                marg_dict['site'].append(site['name'])
-                marg_dict['density'].append(density)
-                marg_dict['avg_yearly_gain'].append(avg_yearly_gain)
-                marg_dict['total_yearly_delta_weight_kg_per_ha'].append(
-                                                              avg_yearly_gain_herd)
+        grass_csv = os.path.join(input_dir,
+                                 '{:d}.csv'.format(int(site['name'])))
+        # initialize_n_mult(grass_csv)
+        add_cp_to_grass_csv(grass_csv, target)
+        forage_args['grass_csv'] = grass_csv
+        forage_args['latitude'] = site['lat']
+        forage_args['outdir'] = outdir
+        # if not succeeded:  # os.path.exists(outdir):
+            # calc_n_mult(forage_args, target)
+        # try:
+            # forage.execute(forage_args)
+        # except:
+            # import pdb; pdb.set_trace()
+            # continue
+        succeeded = id_failed_simulation(outdir, forage_args['num_months'])
+        if not succeeded:
+            failed.append('site_{:d}_{}_per_ha'.format(int(site['name']),
+                          density))
+        # else:
+        sum_csv = os.path.join(outdir, 'summary_results.csv')
+        try:
+            sum_df = pd.read_csv(sum_csv)
+        except:
+            continue
+        subset = sum_df.loc[sum_df['year'] > 2013]
+        grouped = subset.groupby('year')
+        avg_yearly_gain = (grouped.sum()['cattle_gain_kg']).mean()
+        start_wt = sum_df.iloc[0]['cattle_kg']
+        avg_yearly_gain_herd = avg_yearly_gain * float(density)
+        perc_gain = avg_yearly_gain / float(start_wt)
+        marg_dict['site'].append(site['name'])
+        marg_dict['density'].append(density)
+        marg_dict['avg_yearly_gain'].append(avg_yearly_gain)
+        marg_dict['total_yearly_delta_weight_kg_per_ha'].append(
+                                                      avg_yearly_gain_herd)
     # summarize_cp_content(outer_outdir)
     df = pd.DataFrame(marg_dict)
     summary_csv = os.path.join(outer_outdir, 'gain_summary.csv')
