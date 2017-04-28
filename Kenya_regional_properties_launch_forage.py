@@ -97,16 +97,22 @@ def summarize_remaining_biomass():
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
     
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
-    cp_opts = ['varying', 'constant']
+    cp_opts = ['cp']  # ['varying', 'constant']
     marg_dict = {'site': [], 'month': [], 'year': [], 'remaining_biomass': [],
                  'gazelle_equivalents': [], 'cp_option': []}
     for site in site_list:
-        marg_dict['site'].extend([site['name']] * 48)
         for cp_o in cp_opts:
-            inner_folder_name = "herd_avg_uncalibrated_0.3_{}_cp_GL".format(cp_o)
+            # inner_folder_name = "herd_avg_uncalibrated_0.3_{}_cp_GL".format(cp_o)
+            inner_folder_name = "herd_avg_uncalibrated_constant_cp_GL_est_densities"
             inner_dir = os.path.join(outer_dir, inner_folder_name)
-            outdir = os.path.join(inner_dir,
-                                  'site_{:d}'.format(int(site['name'])))
+            outdir_folder = [f for f in os.listdir(inner_dir) if 
+                             f.startswith('site_{:d}_'.format(int(site['name'])))]
+            try:
+                outdir = os.path.join(inner_dir, outdir_folder[0])
+            except:
+                continue
+            # outdir = os.path.join(inner_dir,
+                                  # 'site_{:d}'.format(int(site['name'])))
             sum_csv = os.path.join(outdir, 'summary_results.csv')
             sum_df = pd.read_csv(sum_csv)
             subset = sum_df.loc[sum_df['year'] > 2013]
@@ -115,11 +121,13 @@ def summarize_remaining_biomass():
             subset.available = subset.total_biomass / 2
             subset.remaining = subset.available - subset.total_offtake
             gazelle_equiv = subset.remaining / 56.29
+            marg_dict['site'].extend([site['name']] * len(subset.month))
             marg_dict['month'].extend(subset.month.tolist())
             marg_dict['year'].extend(subset.year.tolist())
             marg_dict['remaining_biomass'].extend(subset.remaining.tolist())
             marg_dict['gazelle_equivalents'].extend(gazelle_equiv.tolist())
-            marg_dict['cp_option'].extend([cp_o] * 24)
+            marg_dict['cp_option'].extend([cp_o] * len(subset.month))
+    import pdb; pdb.set_trace()
     df = pd.DataFrame(marg_dict)
     summary_csv = os.path.join(outer_dir, 'biomass_remaining_summary.csv')
     df.to_csv(summary_csv)
