@@ -91,16 +91,16 @@ def modify_stocking_density(herbivore_csv, new_sd):
     df.set_value(0, 'stocking_density', new_sd)
     df.to_csv(herbivore_csv)
     
-def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
-             outer_outdir):
+def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
+                    outer_outdir):
     """first stab at implementing rotation with the rangeland production
-    model.  forage_args should contain arguments to run the model, and we
+    model.  This version is "blind" because it is not responsive to pasture
+    biomass. forage_args should contain arguments to run the model, and we
     assume that all pastures are run identically. n_pastures is how many 
     pastures to rotate the herd among. We assume all pastures are equal size,
     and there is just one animal herd."""
     
     time_step = 'month'
-    trigger = 'time'  # does time or residual biomass trigger move to next pasture?
     rot_length = 1  # if time triggers rotation, how many steps each pasture should be grazed at a time
     
     # calculate overall density, assuming equal pasture size and 1 herd
@@ -119,3 +119,4 @@ def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     
     # collect results
     collect_rotation_results(forage_args, n_pastures, outer_outdir)
+
