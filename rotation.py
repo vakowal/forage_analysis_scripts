@@ -2,6 +2,8 @@
 
 import os
 import sys
+import math
+import re
 import pandas as pd
 sys.path.append(
  'C:/Users/Ginger/Documents/Python/rangeland_production')
@@ -70,7 +72,6 @@ def collect_rotation_results(forage_args, n_pastures, outer_outdir):
             total_kgha = sum_df['{}_green_kgha'.format(g_label)] + \
                                        sum_df['{}_dead_kgha'.format(g_label)]
             plant_dict['{}_total_kgha'.format(g_label)].extend(total_kgha)
-    import pdb; pdb.set_trace()
     p_df = pd.DataFrame(plant_dict)
     p_df.to_csv(os.path.join(outer_outdir, 'pasture_summary.csv'), index=False)
     a_df = pd.DataFrame(animal_dict)
@@ -92,7 +93,7 @@ def modify_stocking_density(herbivore_csv, new_sd):
     df.to_csv(herbivore_csv)
     
 def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
-                    outer_outdir):
+                   outer_outdir):
     """first stab at implementing rotation with the rangeland production
     model.  This version is "blind" because it is not responsive to pasture
     biomass. forage_args should contain arguments to run the model, and we
@@ -120,3 +121,78 @@ def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     # collect results
     collect_rotation_results(forage_args, n_pastures, outer_outdir)
 
+def get_max_biomass_pasture(outer_outdir, forage_args, n_pastures, date):
+    """Identify the pasture with highest total biomass."""
+    
+    biom_list = []
+    for pidx in range(n_pastures):
+        outdir = os.path.join(outer_outdir, 'p_{}'.format(pidx))
+        # find latest folder of outputs
+        folder_list = [f for f in os.listdir(outdir) if
+                        os.path.isdir(os.path.join(outdir, f))]
+        folder_list.remove('CENTURY_outputs_spin_up')
+        max_year = max([f[-4:] for f in folder_list])
+        folder_list = [f for f in folder_list if f.endswith(max_year)]
+        max_month = max([int(re.search(
+                        'CENTURY_outputs_m(.+?)_y{}'.format(max_year),
+                        f).group(1)) for f in folder_list])
+        max_folder = os.path.join(outdir,
+                                  'CENTURY_outputs_m{}_y{}'.format(
+                                  max_month, max_year))
+        output_files = [f for f in os.listdir(max_folder)
+                        if f.endswith('.lis')]
+        output_f = os.path.join(max_folder, output_files[0])
+        outputs = cent.read_CENTURY_outputs(output_f,
+                                            math.floor(date) - 1,
+                                            math.ceil(date) + 1)
+        outputs.drop_duplicates(inplace=True)
+        total_biom = outputs.loc[date, 'aglivc'] + outputs.loc[date, 'stdedc']
+        biom_list.append(total_biom)
+    return biom_list.index(max(biom_list))
+        
+def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
+             outer_outdir):
+    """Rotation with allocation of rotated animals to pasture with highest
+    total biomass."""
+    
+    time_step = 'month'
+    rot_length = 3  # if time triggers rotation, how many steps each pasture should be grazed at a time
+    
+    # calculate overall density, assuming equal pasture size and 1 herd
+    stocking_dens = float(num_animals) / pasture_size_ha
+    modify_stocking_density(forage_args['herbivore_csv'], stocking_dens)
+    
+    # initialize grazing months list for each pasture
+    grz_mo_list = [[] for n in range(n_pastures)]
+        
+    # launch simulations
+    total_steps = forage_args['num_months']
+    for rot_step in range(rot_length, total_steps, rot_length):  # one rotation length at a time
+        forage_args['num_months'] = rot_step  # accumulate with each rot_step
+        target_step = rot_step - rot_length  # target date to measure biomass; when grazing would start
+        step_month = forage_args[u'start_month'] + target_step
+        if step_month > 12:
+            mod = step_month % 12
+            if mod == 0:
+                month = 12
+                year = (step_month / 12) + forage_args[u'start_year'] - 1
+            else:
+                month = mod
+                year = (step_month / 12) + forage_args[u'start_year']
+        else:
+            month = step_month
+            year = (target_step / 12) + forage_args[u'start_year']
+        date = year + float('%.2f' % (month / 12.))
+        if rot_step == rot_length:
+            max_pidx = 0  # use first pasture by default in first step
+        else:
+            max_pidx = get_max_biomass_pasture(outer_outdir, forage_args,
+                                               n_pastures, date)
+        grz_mo_list[max_pidx].extend(range(rot_step - rot_length, rot_step))  # next rotation step
+        for pidx in range(n_pastures):  # launch each pasture
+            forage_args['outdir'] = os.path.join(outer_outdir, 'p_{}'.format(pidx))
+            forage_args['grz_months'] = grz_mo_list[pidx]
+            forage.execute(forage_args)
+    
+    # collect results
+    collect_rotation_results(forage_args, n_pastures, outer_outdir)
