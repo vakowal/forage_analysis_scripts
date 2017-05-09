@@ -91,6 +91,14 @@ def modify_stocking_density(herbivore_csv, new_sd):
     df['stocking_density'] = df['stocking_density'].astype(float)
     df.set_value(0, 'stocking_density', new_sd)
     df.to_csv(herbivore_csv)
+
+def continuous(forage_args, n_pastures, pasture_size_ha, num_animals, outdir):
+    """Continuous grazing, no rotation."""
+    
+    stocking_dens = float(num_animals) / (pasture_size_ha * n_pastures)
+    modify_stocking_density(forage_args['herbivore_csv'], stocking_dens)
+    forage_args['outdir'] = outdir
+    forage.execute(forage_args)
     
 def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
                    outer_outdir):
