@@ -204,3 +204,51 @@ def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     
     # collect results
     collect_rotation_results(forage_args, n_pastures, outer_outdir)
+
+def calc_productivity_metrics(cont_dir, rot_dir):
+    """Summarize difference in pasture and animal productivity between a
+    rotated and continuous schedule."""
+    
+    cont_sum_csv = os.path.join(cont_dir, "summary_results.csv")
+    rot_a_csv = os.path.join(rot_dir, "animal_summary.csv")
+    rot_p_csv = os.path.join(rot_dir, "pasture_summary.csv")
+    
+    cont_sum = pd.read_csv(cont_sum_csv)
+    cont_sum['date'] = cont_sum['year'] + 1./12 * cont_sum['month']
+    cont_green_col = [f for f in cont_sum.columns if f.endswith('green_kgha')]
+    assert len(cont_green_col) == 1, "Assume only one column matches"
+    cont_green_col = cont_green_col[0]
+    cont_dead_col = [f for f in cont_sum.columns if f.endswith('dead_kgha')]
+    assert len(cont_dead_col) == 1, "Assume only one column matches"
+    cont_dead_col = cont_dead_col[0]
+    cont_sum['pasture_kgha_continuous'] = cont_sum[cont_green_col] + \
+                                          cont_sum[cont_dead_col]
+
+    cont_anim_col = [f for f in cont_sum.columns if f.endswith('gain_kg')]
+    assert len(cont_anim_col) == 1, "Assume only one column matches"
+    cont_sum.rename(columns={cont_anim_col[0]: 'gain_continuous'},
+                    inplace=True)
+    cont_df = cont_sum[['date', 'pasture_kgha_continuous', 'gain_continuous']]
+    
+    rot_p_df = pd.read_csv(rot_p_csv)
+    rot_p_df['date'] = rot_p_df['year'] + 1./12 * rot_p_df['month']
+    rot_grass_col = [f for f in rot_p_df.columns if f.endswith('total_kgha')]
+    assert len(rot_grass_col) == 1, "Assume only one column matches"
+    rot_p_df.rename(columns={rot_grass_col[0]: 'pasture_kgha_rot'},
+                    inplace=True)
+    rot_mean = rot_p_df.groupby('date')['pasture_kgha_rot'].mean().reset_index()
+    summary_df = pd.merge(rot_mean, cont_df, how='inner', on='date')
+    
+    rot_a_df = pd.read_csv(rot_a_csv)
+    rot_a_df['date'] = rot_a_df['year'] + 1./12 * rot_a_df['month']
+    rot_a_df.rename(columns={'animal_gain': 'gain_rot'}, inplace=True)
+    rot_a_df = rot_a_df[['date', 'gain_rot']]
+    
+    summary_df = pd.merge(summary_df, rot_a_df, how='inner', on='date')
+    gain_diff = ((summary_df['gain_rot'].mean() -
+                 summary_df['gain_continuous'].mean()) /
+                 abs(summary_df['gain_continuous'].mean()))
+    pasture_diff = ((summary_df['pasture_kgha_rot'].mean() -
+                    summary_df['pasture_kgha_continuous'].mean()) /
+                    (summary_df['pasture_kgha_continuous'].mean()))
+    return gain_diff, pasture_diff
