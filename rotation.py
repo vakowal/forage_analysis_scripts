@@ -92,16 +92,26 @@ def modify_stocking_density(herbivore_csv, new_sd):
     df.set_value(0, 'stocking_density', new_sd)
     df.to_csv(herbivore_csv)
 
-def continuous(forage_args, n_pastures, pasture_size_ha, num_animals, outdir):
+def continuous(forage_args, total_area_ha, num_animals, outdir,
+               winter_flag=None):
     """Continuous grazing, no rotation."""
     
-    stocking_dens = float(num_animals) / (pasture_size_ha * n_pastures)
+    stocking_dens = float(num_animals) / total_area_ha
     modify_stocking_density(forage_args['herbivore_csv'], stocking_dens)
     forage_args['outdir'] = outdir
+    
+    if winter_flag:
+        # remove months 1 and 12 from grz_months
+        grz_months = range(1, forage_args['num_months'])
+        grz_months = [m for m in grz_months if (m % 12) > 0]  # remove month 1
+        grz_months = [m for m in grz_months if ((m + 1) % 12) > 0]  # remove month 12
+    else:
+        grz_months = range(forage_args['num_months'])
+    forage_args['grz_months'] = grz_months
     forage.execute(forage_args)
     
-def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
-                   outer_outdir):
+def blind_rotation(forage_args, total_area_ha, n_pastures, num_animals,
+                   outer_outdir, winter_flag=None):
     """first stab at implementing rotation with the rangeland production
     model.  This version is "blind" because it is not responsive to pasture
     biomass. forage_args should contain arguments to run the model, and we
@@ -113,6 +123,7 @@ def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     rot_length = 1  # if time triggers rotation, how many steps each pasture should be grazed at a time
     
     # calculate overall density, assuming equal pasture size and 1 herd
+    pasture_size_ha = float(total_area_ha) / n_pastures
     stocking_dens = float(num_animals) / pasture_size_ha
     modify_stocking_density(forage_args['herbivore_csv'], stocking_dens)
     
@@ -123,7 +134,13 @@ def blind_rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     # launch simulations
     for pidx in range(n_pastures):
         forage_args['outdir'] = os.path.join(outer_outdir, 'p_{}'.format(pidx))
-        forage_args['grz_months'] = grz_mo_list[pidx]
+        grz_months = grz_mo_list[pidx]
+        if winter_flag:
+            # remove months 1 and 12 from grz_months
+            grz_months = [m for m in grz_months if m > 0]  # remove month 1
+            grz_months = [m for m in grz_months if (m % 12) > 0]  # remove month 1
+            grz_months = [m for m in grz_months if ((m + 1) % 12) > 0]  # remove month 12
+        forage_args['grz_months'] = grz_months
         forage.execute(forage_args)
     
     # collect results
@@ -164,7 +181,7 @@ def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     total biomass."""
     
     time_step = 'month'
-    rot_length = 3  # if time triggers rotation, how many steps each pasture should be grazed at a time
+    rot_length = 1  # if time triggers rotation, how many steps each pasture should be grazed at a time
     
     # calculate overall density, assuming equal pasture size and 1 herd
     stocking_dens = float(num_animals) / pasture_size_ha
