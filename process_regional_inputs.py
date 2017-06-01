@@ -256,17 +256,31 @@ def make_sch_files(template_hist, template_extend, soil_table, save_dir):
         save_as = os.path.join(save_dir, '{}.sch'.format(site_name))
         copy_sch_file(template_extend, site_name, weather_file, save_as)
 
-def clip_FEWS_files(FEWS_folder, clipped_folder, aoi_shp):
-    """Clip the raw FEWS files to an aoi to speed up later processing."""
+def clip_rasters_arcpy(rasters_folder, clipped_folder, aoi_shp, endswith):
+    """Clip large rasters to an aoi using arcpy instead of gdal."""
     
-    bil_files = [f for f in os.listdir(FEWS_folder) if f.endswith(".bil")]
+    to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
     raster_nodata = 9999
     out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
-                                       os.path.join(FEWS_folder, bil_files[0]))
-    for b in bil_files:
-        bil = os.path.join(FEWS_folder, b)
+                                      os.path.join(rasters_folder, to_clip[0]))
+    for r in to_clip:
+        bil = os.path.join(rasters_folder, r)
+        outExtractByMask = arcpy.sa.ExtractByMask(bil, aoi_shp)
+        clipped_raster_uri = os.path.join(clipped_folder, r)
+        outExtractByMask.save(clipped_raster_uri)
+    
+def clip_rasters(rasters_folder, clipped_folder, aoi_shp, endswith):
+    """Clip large rasters to an aoi to speed up later processing. Rasters are
+    identified as files within the rasters_folder that end with 'endswith'."""
+    
+    to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
+    raster_nodata = 9999
+    out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
+                                      os.path.join(rasters_folder, to_clip[0]))
+    for r in to_clip:
+        bil = os.path.join(rasters_folder, r)
         # arcpy.DefineProjection_management(bil, 102022)  # Africa Albers eq. area conic
-        clipped_raster_uri = os.path.join(clipped_folder, b)
+        clipped_raster_uri = os.path.join(clipped_folder, r)
         pygeoprocessing.geoprocessing.vectorize_datasets(
             [bil], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
             raster_nodata, out_pixel_size, "union",
