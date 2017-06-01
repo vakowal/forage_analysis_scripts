@@ -2,7 +2,7 @@
 # on regional properties, Laikipia
 # and from tabular weather data downloaded from NOAA
 
-# import arcpy
+import arcpy
 import pandas as pd
 import numpy as np
 import os
@@ -16,7 +16,7 @@ sys.path.append(
  r'C:\Users\Ginger\Documents\Python\rangeland_production')
 import forage_century_link_utils as cent
 
-# arcpy.CheckOutExtension("Spatial")
+arcpy.CheckOutExtension("Spatial")
 
 def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
     """Calculate average annual precipitation within properties identified by
@@ -449,27 +449,38 @@ def remove_grazing(input_dir, out_dir):
         new_sch = os.path.join(out_dir, os.path.basename(sch))
         shutil.copyfile(abs_path, new_sch)
         os.remove(abs_path)
-    
-def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
+            
+def process_worldclim_temp(worldclim_folder, save_as, zonal_shp=None,
+                           point_shp=None):
     """Make a table of max and min monthly temperature for points which are the
-    centroids of properties (features in zonal_shp), from worldclim rasters."""
+    centroids of properties (features in zonal_shp, if supplied) or the points
+    in point_shp, if supplied, from worldclim rasters."""
     
     tempdir = tempfile.mkdtemp()
     
-    # make property centroid shapefile to extract values to points
-    point_shp = os.path.join(tempdir, 'centroid.shp')
-    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    if zonal_shp and point_shp:
+        raise ValueError("Only one of point or polygon layers may be supplied")
+        
+    if point_shp:
+        # make a temporary copy of the point shapefile to append worldclim values
+        source_shp = point_shp
+        point_shp = os.path.join(tempdir, 'points.shp')
+        arcpy.Copy_management(source_shp, point_shp)
+    if zonal_shp:
+        # make property centroid shapefile to extract values to points
+        point_shp = os.path.join(tempdir, 'centroid.shp')
+        arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]
+    field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'FID')
-    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
+    field_list.insert(0, 'Comment')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     temp_dict = {'site': [], 'month': [], 'tmin': [], 'tmax': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -477,7 +488,7 @@ def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
             temp_dict['site'].extend([site] * 12)
             for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[4:6]
+                month = field[5:7]
                 if field.startswith('tmin'):
                     temp_dict['tmin'].append(row[f_idx] / 10.0)
                 elif field.startswith('tmax'):
@@ -485,29 +496,43 @@ def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
                 else:
                     raise Exception, "value not recognized"
             temp_dict['month'].extend(month_list)
+    for key in temp_dict.keys():
+        if len(temp_dict[key]) == 0:
+            del temp_dict[key]
     temp_df = pd.DataFrame.from_dict(temp_dict)
     temp_df.to_csv(save_as, index=False)
 
-def process_worldclim_precip(worldclim_folder, zonal_shp, save_as):
+def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
+                             point_shp=None):
     """Make a table of monthly precip for points which are the
-    centroids of properties (features in zonal_shp), from worldclim rasters."""
+    centroids of properties (features in zonal_shp, if supplied) or the points
+    in point_shp, if supplied, from worldclim rasters"""
     
     tempdir = tempfile.mkdtemp()
     
-    # make property centroid shapefile to extract values to points
-    point_shp = os.path.join(tempdir, 'centroid.shp')
-    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    if zonal_shp and point_shp:
+        raise ValueError("Only one of point or polygon layers may be supplied")
+        
+    if point_shp:
+        # make a temporary copy of the point shapefile to append worldclim values
+        source_shp = point_shp
+        point_shp = os.path.join(tempdir, 'points.shp')
+        arcpy.Copy_management(source_shp, point_shp)
+    if zonal_shp:
+        # make property centroid shapefile to extract values to points
+        point_shp = os.path.join(tempdir, 'centroid.shp')
+        arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]
+    field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'FID')
-    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
+    field_list.insert(0, 'Comment')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     prec_dict = {'site': [], 'month': [], 'prec': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -515,7 +540,7 @@ def process_worldclim_precip(worldclim_folder, zonal_shp, save_as):
             prec_dict['site'].extend([site] * 12)
             for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[4:6]
+                month = field[5:7]
                 prec_dict['prec'].append(row[f_idx])
             prec_dict['month'].extend(month_list)
     prec_df = pd.DataFrame.from_dict(prec_dict)
