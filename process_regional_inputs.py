@@ -291,7 +291,8 @@ def GSOM_table_to_input():
     """Convert Global Summary of the Month data tables containing precip and
     temperature to inputs for Century."""
     
-    GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Kingsville_GSOM_1981_2016.csv"
+    # GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Kingsville_GSOM_1981_2016.csv"
+    GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Ucross/Ucross_GSOM_1980_2016.csv"
     save_as = GSOM_file[:-4] + '.wth'
     gsom_df = pd.read_csv(GSOM_file)
     gsom_df = gsom_df.sort_values(by='DATE')
@@ -716,7 +717,35 @@ def canete_regular_grid_workflow():
     clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
     aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
     
+def mongolia_workflow():
+    """Generate climate inputs to run the model at Boogie's monitoring points
+    for sustainable cashmere."""
     
+    worldclim_tmax_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmax"
+    worldclim_tmin_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmin"
+    worldclim_precip_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_precip"
+    clipped_outer_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim"
+    bounding_aoi = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Boogie_points_bounding_aoi.shp"
+    
+    # clip_rasters_arcpy(worldclim_tmax_folder,
+                 # os.path.join(clipped_outer_folder, 'tmax'),
+                 # bounding_aoi, '.tif')
+    # clip_rasters_arcpy(worldclim_tmin_folder,
+                 # os.path.join(clipped_outer_folder, 'tmin'),
+                 # bounding_aoi, '.tif')
+    # clip_rasters_arcpy(worldclim_precip_folder,
+                 # os.path.join(clipped_outer_folder, 'precip'),
+                 # bounding_aoi, '.tif')
+    
+    point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\monitoring_points.shp"
+    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
+    # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), save_as,
+                           # point_shp=point_shp)
+    
+    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
+    process_worldclim_precip(os.path.join(clipped_outer_folder, 'precip'),
+                             save_as, point_shp=point_shp)
+                             
 if __name__ == "__main__":
     # laikipia_regional_properties_workflow()
-    GSOM_table_to_input()
+    mongolia_workflow()
