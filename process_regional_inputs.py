@@ -2,7 +2,7 @@
 # on regional properties, Laikipia
 # and from tabular weather data downloaded from NOAA
 
-# import arcpy
+import arcpy
 import pandas as pd
 import numpy as np
 import os
@@ -16,7 +16,7 @@ sys.path.append(
  r'C:\Users\Ginger\Documents\Python\rangeland_production')
 import forage_century_link_utils as cent
 
-# arcpy.CheckOutExtension("Spatial")
+arcpy.CheckOutExtension("Spatial")
 
 def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
     """Calculate average annual precipitation within properties identified by
@@ -256,17 +256,31 @@ def make_sch_files(template_hist, template_extend, soil_table, save_dir):
         save_as = os.path.join(save_dir, '{}.sch'.format(site_name))
         copy_sch_file(template_extend, site_name, weather_file, save_as)
 
-def clip_FEWS_files(FEWS_folder, clipped_folder, aoi_shp):
-    """Clip the raw FEWS files to an aoi to speed up later processing."""
+def clip_rasters_arcpy(rasters_folder, clipped_folder, aoi_shp, endswith):
+    """Clip large rasters to an aoi using arcpy instead of gdal."""
     
-    bil_files = [f for f in os.listdir(FEWS_folder) if f.endswith(".bil")]
+    to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
     raster_nodata = 9999
     out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
-                                       os.path.join(FEWS_folder, bil_files[0]))
-    for b in bil_files:
-        bil = os.path.join(FEWS_folder, b)
+                                      os.path.join(rasters_folder, to_clip[0]))
+    for r in to_clip:
+        bil = os.path.join(rasters_folder, r)
+        outExtractByMask = arcpy.sa.ExtractByMask(bil, aoi_shp)
+        clipped_raster_uri = os.path.join(clipped_folder, r)
+        outExtractByMask.save(clipped_raster_uri)
+    
+def clip_rasters(rasters_folder, clipped_folder, aoi_shp, endswith):
+    """Clip large rasters to an aoi to speed up later processing. Rasters are
+    identified as files within the rasters_folder that end with 'endswith'."""
+    
+    to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
+    raster_nodata = 9999
+    out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
+                                      os.path.join(rasters_folder, to_clip[0]))
+    for r in to_clip:
+        bil = os.path.join(rasters_folder, r)
         # arcpy.DefineProjection_management(bil, 102022)  # Africa Albers eq. area conic
-        clipped_raster_uri = os.path.join(clipped_folder, b)
+        clipped_raster_uri = os.path.join(clipped_folder, r)
         pygeoprocessing.geoprocessing.vectorize_datasets(
             [bil], lambda x: x, clipped_raster_uri, gdal.GDT_Float64,
             raster_nodata, out_pixel_size, "union",
@@ -277,7 +291,8 @@ def GSOM_table_to_input():
     """Convert Global Summary of the Month data tables containing precip and
     temperature to inputs for Century."""
     
-    GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Kingsville_GSOM_1981_2016.csv"
+    # GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Kingsville_GSOM_1981_2016.csv"
+    GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Ucross/Ucross_GSOM_1980_2016.csv"
     save_as = GSOM_file[:-4] + '.wth'
     gsom_df = pd.read_csv(GSOM_file)
     gsom_df = gsom_df.sort_values(by='DATE')
@@ -435,27 +450,38 @@ def remove_grazing(input_dir, out_dir):
         new_sch = os.path.join(out_dir, os.path.basename(sch))
         shutil.copyfile(abs_path, new_sch)
         os.remove(abs_path)
-    
-def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
+            
+def process_worldclim_temp(worldclim_folder, save_as, zonal_shp=None,
+                           point_shp=None):
     """Make a table of max and min monthly temperature for points which are the
-    centroids of properties (features in zonal_shp), from worldclim rasters."""
+    centroids of properties (features in zonal_shp, if supplied) or the points
+    in point_shp, if supplied, from worldclim rasters."""
     
     tempdir = tempfile.mkdtemp()
     
-    # make property centroid shapefile to extract values to points
-    point_shp = os.path.join(tempdir, 'centroid.shp')
-    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    if zonal_shp and point_shp:
+        raise ValueError("Only one of point or polygon layers may be supplied")
+        
+    if point_shp:
+        # make a temporary copy of the point shapefile to append worldclim values
+        source_shp = point_shp
+        point_shp = os.path.join(tempdir, 'points.shp')
+        arcpy.Copy_management(source_shp, point_shp)
+    if zonal_shp:
+        # make property centroid shapefile to extract values to points
+        point_shp = os.path.join(tempdir, 'centroid.shp')
+        arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]
+    field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'FID')
-    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
+    field_list.insert(0, 'Comment')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     temp_dict = {'site': [], 'month': [], 'tmin': [], 'tmax': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -463,7 +489,7 @@ def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
             temp_dict['site'].extend([site] * 12)
             for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[4:6]
+                month = field[5:7]
                 if field.startswith('tmin'):
                     temp_dict['tmin'].append(row[f_idx] / 10.0)
                 elif field.startswith('tmax'):
@@ -471,29 +497,43 @@ def process_worldclim_temp(worldclim_folder, zonal_shp, save_as):
                 else:
                     raise Exception, "value not recognized"
             temp_dict['month'].extend(month_list)
+    for key in temp_dict.keys():
+        if len(temp_dict[key]) == 0:
+            del temp_dict[key]
     temp_df = pd.DataFrame.from_dict(temp_dict)
     temp_df.to_csv(save_as, index=False)
 
-def process_worldclim_precip(worldclim_folder, zonal_shp, save_as):
+def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
+                             point_shp=None):
     """Make a table of monthly precip for points which are the
-    centroids of properties (features in zonal_shp), from worldclim rasters."""
+    centroids of properties (features in zonal_shp, if supplied) or the points
+    in point_shp, if supplied, from worldclim rasters"""
     
     tempdir = tempfile.mkdtemp()
     
-    # make property centroid shapefile to extract values to points
-    point_shp = os.path.join(tempdir, 'centroid.shp')
-    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    if zonal_shp and point_shp:
+        raise ValueError("Only one of point or polygon layers may be supplied")
+        
+    if point_shp:
+        # make a temporary copy of the point shapefile to append worldclim values
+        source_shp = point_shp
+        point_shp = os.path.join(tempdir, 'points.shp')
+        arcpy.Copy_management(source_shp, point_shp)
+    if zonal_shp:
+        # make property centroid shapefile to extract values to points
+        point_shp = os.path.join(tempdir, 'centroid.shp')
+        arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]
+    field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'FID')
-    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
+    field_list.insert(0, 'Comment')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     prec_dict = {'site': [], 'month': [], 'prec': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -501,7 +541,7 @@ def process_worldclim_precip(worldclim_folder, zonal_shp, save_as):
             prec_dict['site'].extend([site] * 12)
             for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[4:6]
+                month = field[5:7]
                 prec_dict['prec'].append(row[f_idx])
             prec_dict['month'].extend(month_list)
     prec_df = pd.DataFrame.from_dict(prec_dict)
@@ -677,7 +717,35 @@ def canete_regular_grid_workflow():
     clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
     aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
     
+def mongolia_workflow():
+    """Generate climate inputs to run the model at Boogie's monitoring points
+    for sustainable cashmere."""
     
+    worldclim_tmax_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmax"
+    worldclim_tmin_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmin"
+    worldclim_precip_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_precip"
+    clipped_outer_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim"
+    bounding_aoi = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Boogie_points_bounding_aoi.shp"
+    
+    # clip_rasters_arcpy(worldclim_tmax_folder,
+                 # os.path.join(clipped_outer_folder, 'tmax'),
+                 # bounding_aoi, '.tif')
+    # clip_rasters_arcpy(worldclim_tmin_folder,
+                 # os.path.join(clipped_outer_folder, 'tmin'),
+                 # bounding_aoi, '.tif')
+    # clip_rasters_arcpy(worldclim_precip_folder,
+                 # os.path.join(clipped_outer_folder, 'precip'),
+                 # bounding_aoi, '.tif')
+    
+    point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\monitoring_points.shp"
+    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
+    # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), save_as,
+                           # point_shp=point_shp)
+    
+    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
+    process_worldclim_precip(os.path.join(clipped_outer_folder, 'precip'),
+                             save_as, point_shp=point_shp)
+                             
 if __name__ == "__main__":
     # laikipia_regional_properties_workflow()
-    GSOM_table_to_input()
+    mongolia_workflow()

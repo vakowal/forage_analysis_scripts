@@ -1,4 +1,5 @@
-# rotation case study: Ortega-S et al 2013
+# test "composition" mechanism of rotation
+# with case study at Ucross, Wyoming
 
 import os
 import sys
@@ -17,7 +18,7 @@ import forage
 
 
 def default_forage_args():
-    """Default args for the forage model for Ortega-S et al test."""
+    """Default args for the forage model for Ucross case study."""
     
     forage_args = {
             'latitude': 27.5,
