@@ -98,6 +98,30 @@ def stocking_dens_test_wrapper(outer_outdir):
     result_df = pd.DataFrame(result_dict)
     result_df.to_csv(os.path.join(outer_outdir, 'summary.csv'))
 
+def erase_intermediate_files(outerdir):
+    folders = [f for f in os.listdir(outerdir) if os.path.isdir(
+                                     os.path.join(outerdir, f))]
+    for folder in folders:
+        try:
+            for file in os.listdir(os.path.join(outerdir, folder)):
+                if file.endswith("summary_results.csv") or \
+                file.startswith("forage-log") or \
+                file.endswith("summary.csv"):
+                    continue
+                else:
+                    try:
+                        object = os.path.join(outerdir, folder, file)
+                        if os.path.isfile(object):
+                            os.remove(object)
+                        else:
+                            shutil.rmtree(object)
+                    except OSError:
+                        continue
+        except WindowsError:
+            continue
+
 if __name__ == "__main__":
-    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\WitW\Ortega-S_et_al\test_test_test"
-    stocking_dens_test_wrapper(outer_outdir)
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\WitW\Ortega-S_et_al\stocking_density_n_pasture_test_all_months"
+    # stocking_dens_test_wrapper(outer_outdir)
+
+    erase_intermediate_files(outer_outdir)
