@@ -300,7 +300,7 @@ def GSOM_table_to_input():
                        range(len(gsom_df.DATE))]
     gsom_df['month'] = [int(gsom_df.iloc[r].DATE.split('-')[1]) for r in
                         range(len(gsom_df.DATE))]
-    gsom_df['prec'] = gsom_df.PRCP / 10
+    gsom_df['prec'] = gsom_df.PRCP
     
     # fill missing values with average values across years within months
     year_list = gsom_df['year'].unique().tolist()
@@ -747,5 +747,5 @@ def mongolia_workflow():
                              save_as, point_shp=point_shp)
                              
 if __name__ == "__main__":
-    # laikipia_regional_properties_workflow()
-    mongolia_workflow()
+    GSOM_table_to_input()
+    
