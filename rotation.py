@@ -93,25 +93,28 @@ def modify_stocking_density(herbivore_csv, new_sd):
     df.to_csv(herbivore_csv)
 
 def continuous(forage_args, total_area_ha, num_animals, outdir,
-               winter_flag=None):
-    """Continuous grazing, no rotation."""
+               remove_months=None):
+    """Continuous grazing, no rotation. If remove_months is supplied, grazing
+    does not happen during those months. Remove_months should be a list of
+    calendar months of the year (i.e. 1=January, 12=December)."""
     
     stocking_dens = float(num_animals) / total_area_ha
     modify_stocking_density(forage_args['herbivore_csv'], stocking_dens)
     forage_args['outdir'] = outdir
     
-    if winter_flag:
-        # remove months 1 and 12 from grz_months
-        grz_months = range(1, forage_args['num_months'])
-        grz_months = [m for m in grz_months if (m % 12) > 0]  # remove month 1
-        grz_months = [m for m in grz_months if ((m + 1) % 12) > 0]  # remove month 12
+    if remove_months:
+        # no grazing in remove_months
+        assert forage_args['start_month'] == 1, "I can't figure out how to handle starting month other than 1"
+        grz_months = range(0, forage_args['num_months'])
+        for r in remove_months:
+            grz_months = [m for m in grz_months if (m % 12) != (r - 1)]
     else:
         grz_months = range(forage_args['num_months'])
     forage_args['grz_months'] = grz_months
     forage.execute(forage_args)
     
 def blind_rotation(forage_args, total_area_ha, n_pastures, num_animals,
-                   outer_outdir, winter_flag=None):
+                   outer_outdir, remove_months=None):
     """first stab at implementing rotation with the rangeland production
     model.  This version is "blind" because it is not responsive to pasture
     biomass. forage_args should contain arguments to run the model, and we
@@ -135,11 +138,11 @@ def blind_rotation(forage_args, total_area_ha, n_pastures, num_animals,
     for pidx in range(n_pastures):
         forage_args['outdir'] = os.path.join(outer_outdir, 'p_{}'.format(pidx))
         grz_months = grz_mo_list[pidx]
-        if winter_flag:
-            # remove months 1 and 12 from grz_months
-            grz_months = [m for m in grz_months if m > 0]  # remove month 1
-            grz_months = [m for m in grz_months if (m % 12) > 0]  # remove month 1
-            grz_months = [m for m in grz_months if ((m + 1) % 12) > 0]  # remove month 12
+        if remove_months:
+            # no grazing in remove_months
+            assert forage_args['start_month'] == 1, "I can't figure out how to handle starting month other than 1"
+            for r in remove_months:
+                grz_months = [m for m in grz_months if (m % 12) != (r - 1)]
         forage_args['grz_months'] = grz_months
         forage.execute(forage_args)
     
