@@ -96,7 +96,63 @@ def composition_wrapper():
                                   'rot_{}_v_{}_cp_{}_v_{}_perc'.format(
                                      high_quality_cp, low_quality_cp,
                                      high_quality_perc, (1-high_quality_perc)))
-            blind_treatment(num_animals, total_area_ha, n_pastures, outdir)
+            blind_treatment(num_animals, total_area_ha, n_pastures, outdir,
+                            remove_months)
+
+def composition_diff(cont_dir, rot_dir, save_as):
+    """What is difference between continuous results and rotation results in
+    terms of pasture composition?  Metric of pasture composition is the
+    difference between the proportions of two grass types."""
+    
+    cont_sum_df = pd.read_csv(os.path.join(cont_dir, 'summary_results.csv'))
+    grass_type_cols = [c for c in cont_sum_df.columns.tolist() if
+                       re.search('kgha', c)]
+    total_grass = cont_sum_df[grass_type_cols].sum(axis=1, skipna=False)
+    green_grass_cols = [c for c in grass_type_cols if
+                        re.search('green_kgha', c)]
+    grass_labels = [re.sub("_green_kgha", "", c) for c in green_grass_cols]
+    assert len(grass_labels) == 2, "Can only handle 2 grass types"
+    prop_dict = {}
+    for label in grass_labels:
+        prop = ((cont_sum_df['{}_green_kgha'.format(label)] + 
+                 cont_sum_df['{}_dead_kgha'.format(label)]) /
+                                                         total_grass).tolist()
+        prop_dict[label] = prop
+    prop_df = pd.DataFrame(prop_dict)
+    # subtract smaller from larger upon first step
+    if prop_df[grass_labels[0]][0] >= prop_df[grass_labels[1]][0]:
+        prop_diff_c = (prop_df[grass_labels[0]] -
+                                          prop_df[grass_labels[1]][0]).tolist()
+    else:
+        prop_diff_c = (prop_df[grass_labels[1]] -
+                                          prop_df[grass_labels[0]][0]).tolist()
+                                          
+    rot_sum_df = pd.read_csv(os.path.join(rot_dir, 'pasture_summary.csv'))
+    rot_grp = rot_sum_df.groupby('step').mean()
+    grass_cols = [c for c in rot_grp.columns.tolist() if
+                       re.search('total_kgha', c)]
+    total_grass = rot_grp[grass_cols].sum(axis=1, skipna=False)
+    ### EEDIT
+    prop_dict = {}
+    for g_col in grass_cols:
+        prop = rot_grp[g_col] / total_grass.tolist()
+        prop_dict[g_col] = prop
+    prop_df = pd.DataFrame(prop_dict)
+    # subtract smaller from larger upon first step
+    if prop_df[grass_cols[0]][0] >= prop_df[grass_cols[1]][0]:
+        prop_diff_r = (prop_df[grass_cols[0]] -
+                                          prop_df[grass_cols[1]][0]).tolist()
+    else:
+        prop_diff_r = (prop_df[grass_cols[1]] -
+                                          prop_df[grass_cols[0]][0]).tolist()
+    assert len(prop_diff_c) == len(prop_diff_r), "Continuous and rotation must have same length"
+    diff_dict = dict()
+    diff_dict['continuous'] = prop_diff_c
+    diff_dict['rotation'] = prop_diff_r
+    diff_dict['month'] = rot_grp['month'].tolist()
+    diff_dict['year'] = rot_grp['year'].tolist()
+    diff_df = pd.DataFrame(diff_dict)
+    diff_df.to_csv(save_as)
     
 def control(num_animals, total_area_ha, outdir, remove_months=None):
     """Run the control scenario for the Ucross comparison:
@@ -169,5 +225,8 @@ def erase_intermediate_files(outerdir):
             continue
 
 if __name__ == "__main__":
-    composition_wrapper()
-    
+    # composition_wrapper()
+    cont_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\control_0.206_v_0.103_cp_0.2_v_0.8_perc"
+    rot_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rot_0.206_v_0.103_cp_0.2_v_0.8_perc"
+    save_as = "C:/Users/Ginger/Desktop/diff_df.csv"
+    composition_diff(cont_dir, rot_dir, save_as)
