@@ -53,9 +53,9 @@ def edit_grass_csv(csv, high_cp, low_cp, high_perc):
     grass_df.percent_biomass = grass_df.percent_biomass.astype(float)
     
     grass_df = grass_df.set_value('high_quality', 'cprotein_green', high_cp)
-    grass_df = grass_df.set_value('high_quality', 'cprotein_dead', high_cp/10.)
+    grass_df = grass_df.set_value('high_quality', 'cprotein_dead', 0.7*high_cp)
     grass_df = grass_df.set_value('low_quality', 'cprotein_green', low_cp)
-    grass_df = grass_df.set_value('low_quality', 'cprotein_dead', low_cp/10.)
+    grass_df = grass_df.set_value('low_quality', 'cprotein_dead', 0.7*low_cp)
     grass_df = grass_df.set_value('high_quality', 'percent_biomass', high_perc)
     grass_df = grass_df.set_value('low_quality', 'percent_biomass', (
                                   1 - high_perc))
