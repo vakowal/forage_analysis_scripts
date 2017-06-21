@@ -27,8 +27,8 @@ def default_forage_args():
             'DOY': 1,
             'start_year': 2002,
             'start_month': 1,
-            'num_months': 12,
-            'mgmt_threshold': 0.1,
+            'num_months': 36,
+            'mgmt_threshold': 0.01,
             'input_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross',
             'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
             'template_level': 'GH',
@@ -42,7 +42,8 @@ def default_forage_args():
             }
     return forage_args
 
-def edit_grass_csv(csv, high_cp, low_cp, high_perc):
+def edit_grass_csv(csv, high_cp, low_cp, high_perc, high_cp_label,
+                   low_cp_label):
     """Edit grass descriptors in grass csv to reflect the given inputs in terms
     of crude protein content and relative biomass."""
     
@@ -52,12 +53,12 @@ def edit_grass_csv(csv, high_cp, low_cp, high_perc):
     grass_df.cprotein_dead = grass_df.cprotein_dead.astype(float)
     grass_df.percent_biomass = grass_df.percent_biomass.astype(float)
     
-    grass_df = grass_df.set_value('high_quality', 'cprotein_green', high_cp)
-    grass_df = grass_df.set_value('high_quality', 'cprotein_dead', 0.7*high_cp)
-    grass_df = grass_df.set_value('low_quality', 'cprotein_green', low_cp)
-    grass_df = grass_df.set_value('low_quality', 'cprotein_dead', 0.7*low_cp)
-    grass_df = grass_df.set_value('high_quality', 'percent_biomass', high_perc)
-    grass_df = grass_df.set_value('low_quality', 'percent_biomass', (
+    grass_df = grass_df.set_value(high_cp_label, 'cprotein_green', high_cp)
+    grass_df = grass_df.set_value(high_cp_label, 'cprotein_dead', 0.7*high_cp)
+    grass_df = grass_df.set_value(low_cp_label, 'cprotein_green', low_cp)
+    grass_df = grass_df.set_value(low_cp_label, 'cprotein_dead', 0.7*low_cp)
+    grass_df = grass_df.set_value(high_cp_label, 'percent_biomass', high_perc)
+    grass_df = grass_df.set_value(low_cp_label, 'percent_biomass', (
                                   1 - high_perc))
     grass_df.to_csv(csv)
 
@@ -66,40 +67,99 @@ def composition_wrapper():
     benefit of rotation as mediated by changes in pasture composition."""
     
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross"
+    comp_filename = os.path.join(outer_outdir, 'proportion_summary_36_mo.csv')
+    bene_filename = os.path.join(outer_outdir, 'benefit_rot_36_mo.csv')
+    high_cp_label = 'high_quality'
+    low_cp_label = 'low_quality'
     
-    # fixed (for now)
-    num_animals = 350
+    # fixed
+    num_animals = 280 # original from Ucross description: 350
     total_area_ha = 688
-    n_pastures = 12
     cp_mean = 0.1545
+    cp_ratio_list = [1.1, 1.2]
     
-    # vary (first)
-    cp_ratio_list = [2]
-    high_quality_perc_list = [0.2]
+    # vary
+    n_pasture_list = [2, 3]  # , 4]
+    high_quality_perc_list = [0.1, 0.2]  # , 0.4, 0.5, 0.6]
 
-    for cp_ratio in cp_ratio_list:
-        for high_quality_perc in high_quality_perc_list:
+    df_list = []
+    result_dict = {'n_pastures': [], 'high_quality_perc': [],
+                   'cp_ratio': [], 'gain_%_diff': []}
+    remove_months = [1, 2, 3, 11, 12]
+    for high_quality_perc in high_quality_perc_list:
+        for cp_ratio in cp_ratio_list:
             low_quality_cp = (2. * cp_mean) / (cp_ratio + 1.)
             high_quality_cp = float(cp_ratio) * low_quality_cp
-            
             forage_args = default_forage_args()
             edit_grass_csv(forage_args['grass_csv'], high_quality_cp,
-                           low_quality_cp, high_quality_perc)
-            outdir = os.path.join(outer_outdir,
-                                  'control_{}_v_{}_cp_{}_v_{}_perc'.format(
-                                     high_quality_cp, low_quality_cp,
-                                     high_quality_perc, (1-high_quality_perc)))
-            remove_months = [1, 2, 3, 11, 12]
-            control(num_animals, total_area_ha, outdir, remove_months)
-            
-            outdir = os.path.join(outer_outdir,
-                                  'rot_{}_v_{}_cp_{}_v_{}_perc'.format(
-                                     high_quality_cp, low_quality_cp,
-                                     high_quality_perc, (1-high_quality_perc)))
-            blind_treatment(num_animals, total_area_ha, n_pastures, outdir,
-                            remove_months)
+                           low_quality_cp, high_quality_perc, high_cp_label,
+                           low_cp_label)
+            cont_dir = os.path.join(outer_outdir,
+                                    'control_{}_v_{}_perc_{}'.format(
+                                    high_quality_perc, (1-high_quality_perc),
+                                    cp_ratio))
+            if not os.path.exists(os.path.join(cont_dir,
+                                  'summary_results.csv')):
+                control(num_animals, total_area_ha, cont_dir, remove_months)
+            for n_pastures in n_pasture_list:
+                rot_dir = os.path.join(outer_outdir,
+                                      'rot_{}_pastures_{}_v_{}_perc_{}'.format(
+                                         n_pastures, high_quality_perc,
+                                         (1-high_quality_perc),
+                                         cp_ratio))
+                if not os.path.exists(os.path.join(rot_dir,
+                                      'pasture_summary.csv')):
+                    blind_treatment(num_animals, total_area_ha, n_pastures,
+                                    rot_dir, remove_months)
+                diff_df = proportion_high_quality(cont_dir, rot_dir)
+                diff_df['n_pastures'] = [n_pastures] * len(diff_df.index)
+                diff_df['high_quality_perc'] = [high_quality_perc] * len(
+                                                                     diff_df.index)
+                diff_df['cp_ratio'] = [cp_ratio] * len(diff_df.index)
+                df_list.append(diff_df)
+                gain_diff, pasture_diff = rotation.calc_productivity_metrics(
+                                                                 cont_dir, rot_dir)
+                result_dict['n_pastures'].append(n_pastures)
+                result_dict['high_quality_perc'].append(high_quality_perc)
+                result_dict['cp_ratio'].append(cp_ratio)
+                result_dict['gain_%_diff'].append(gain_diff)
+    composition_effect_df = pd.concat(df_list)
+    composition_effect_df.to_csv(comp_filename)
+    
+    result_df = pd.DataFrame(result_dict)
+    result_df.to_csv(bene_filename)
 
-def composition_diff(cont_dir, rot_dir, save_as):
+def proportion_high_quality(cont_dir, rot_dir):
+    """contrast the proportion of high quality grass between continuous and
+    rotated schedules. Grass must be labeled 'high_quality'"""
+    
+    cont_sum_df = pd.read_csv(os.path.join(cont_dir, 'summary_results.csv'))
+    grass_type_cols = [c for c in cont_sum_df.columns.tolist() if
+                       re.search('kgha', c)]
+    total_grass = cont_sum_df[grass_type_cols].sum(axis=1, skipna=False)
+    prop_highq_c = ((cont_sum_df['high_quality_green_kgha'] + 
+             cont_sum_df['high_quality_dead_kgha']) /
+                                                     total_grass).tolist()
+                                          
+    rot_sum_df = pd.read_csv(os.path.join(rot_dir, 'pasture_summary.csv'))
+    rot_grp = rot_sum_df.groupby('step').mean()
+    grass_cols = [c for c in rot_grp.columns.tolist() if
+                       re.search('total_kgha', c)]
+    total_grass = rot_grp[grass_cols].sum(axis=1, skipna=False)
+    prop_highq_r = rot_grp['high_quality_total_kgha'] / total_grass.tolist()
+
+    assert len(prop_highq_c) == len(prop_highq_r), "Continuous and rotation must have same length"
+    prop_dict = dict()
+    prop_dict['continuous'] = prop_highq_c
+    prop_dict['rotation'] = prop_highq_r
+    prop_dict['month'] = rot_grp['month'].tolist()
+    prop_dict['year'] = rot_grp['year'].tolist()
+    prop_dict['step'] = rot_grp.index.tolist()
+    prop_df = pd.DataFrame(prop_dict)
+    prop_df.set_index(['step'], inplace=True)
+    return prop_df
+    
+def composition_diff(cont_dir, rot_dir):
     """What is difference between continuous results and rotation results in
     terms of pasture composition?  Metric of pasture composition is the
     difference between the proportions of two grass types."""
@@ -119,40 +179,36 @@ def composition_diff(cont_dir, rot_dir, save_as):
                                                          total_grass).tolist()
         prop_dict[label] = prop
     prop_df = pd.DataFrame(prop_dict)
-    # subtract smaller from larger upon first step
-    if prop_df[grass_labels[0]][0] >= prop_df[grass_labels[1]][0]:
-        prop_diff_c = (prop_df[grass_labels[0]] -
-                                          prop_df[grass_labels[1]][0]).tolist()
-    else:
-        prop_diff_c = (prop_df[grass_labels[1]] -
-                                          prop_df[grass_labels[0]][0]).tolist()
+    
+    # subtract from each other, in fixed order
+    prop_diff_c = (prop_df[grass_labels[0]] -
+                   prop_df[grass_labels[1]][0]).tolist()
                                           
     rot_sum_df = pd.read_csv(os.path.join(rot_dir, 'pasture_summary.csv'))
     rot_grp = rot_sum_df.groupby('step').mean()
     grass_cols = [c for c in rot_grp.columns.tolist() if
                        re.search('total_kgha', c)]
     total_grass = rot_grp[grass_cols].sum(axis=1, skipna=False)
-    ### EEDIT
+
     prop_dict = {}
     for g_col in grass_cols:
         prop = rot_grp[g_col] / total_grass.tolist()
         prop_dict[g_col] = prop
     prop_df = pd.DataFrame(prop_dict)
-    # subtract smaller from larger upon first step
-    if prop_df[grass_cols[0]][0] >= prop_df[grass_cols[1]][0]:
-        prop_diff_r = (prop_df[grass_cols[0]] -
-                                          prop_df[grass_cols[1]][0]).tolist()
-    else:
-        prop_diff_r = (prop_df[grass_cols[1]] -
-                                          prop_df[grass_cols[0]][0]).tolist()
+    
+    # subtract from each other, in fixed order
+    prop_diff_r = (prop_df[grass_cols[0]] - prop_df[grass_cols[1]][0]).tolist()
+
     assert len(prop_diff_c) == len(prop_diff_r), "Continuous and rotation must have same length"
     diff_dict = dict()
     diff_dict['continuous'] = prop_diff_c
     diff_dict['rotation'] = prop_diff_r
     diff_dict['month'] = rot_grp['month'].tolist()
     diff_dict['year'] = rot_grp['year'].tolist()
+    diff_dict['step'] = rot_grp.index.tolist()
     diff_df = pd.DataFrame(diff_dict)
-    diff_df.to_csv(save_as)
+    diff_df.set_index(['step'], inplace=True)
+    return diff_df
     
 def control(num_animals, total_area_ha, outdir, remove_months=None):
     """Run the control scenario for the Ucross comparison:
@@ -204,6 +260,16 @@ def stocking_dens_test_wrapper(outer_outdir):
     result_df = pd.DataFrame(result_dict)
     result_df.to_csv(os.path.join(outer_outdir, 'summary.csv'))
 
+def zero_sd():
+    """Run zero stocking density to get forage production right."""
+    
+    outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\zero_sd_KNZ_2"
+    num_animals = 0
+    total_area_ha = 1
+    
+    forage_args = default_forage_args()
+    control(num_animals, total_area_ha, outdir)
+    
 def erase_intermediate_files(outerdir):
     for folder in os.listdir(outerdir):
         try:
@@ -225,8 +291,4 @@ def erase_intermediate_files(outerdir):
             continue
 
 if __name__ == "__main__":
-    # composition_wrapper()
-    cont_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\control_0.206_v_0.103_cp_0.2_v_0.8_perc"
-    rot_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rot_0.206_v_0.103_cp_0.2_v_0.8_perc"
-    save_as = "C:/Users/Ginger/Desktop/diff_df.csv"
-    composition_diff(cont_dir, rot_dir, save_as)
+    composition_wrapper()
