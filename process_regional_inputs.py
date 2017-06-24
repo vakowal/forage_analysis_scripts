@@ -707,6 +707,62 @@ def generate_site_csv(input_dir, save_as):
     site_df = pd.DataFrame(site_dict)
     site_df.to_csv(save_as, index=False)
 
+def worldclim_to_site_file(site_file_dir):
+    """Write Worldclim averages into existing site files."""
+    
+    wc_precip = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
+    wc_temp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
+    
+    # I divided worldclim precip by 10 (mm to cm) by hand
+    
+    prec_df = pd.read_csv(wc_precip)
+    temp_df = pd.read_csv(wc_temp)
+    for site in prec_df.site.unique().tolist():
+        prec_subs = prec_df.loc[prec_df['site'] == site]
+        prec_subs = prec_subs.set_index('month')
+        temp_subs = temp_df.loc[temp_df['site'] == site]
+        temp_subs = temp_subs.set_index('month')
+        site_file = os.path.join(site_file_dir, '{}.100'.format(site))
+        fh, abs_path = mkstemp()
+        os.close(fh)
+        with open(abs_path, 'wb') as newfile:
+            with open(site_file, 'rb') as old_file:
+                line = old_file.next()
+                while 'PRECIP(1)' not in line:
+                    newfile.write(line)
+                    line = old_file.next()
+                for m in range(1, 13):
+                    item = prec_subs.get_value(m, 'prec')
+                    newline = '{:<8.5f}          \'PRECIP({})\'\n'.format(item,
+                                                                          m)
+                    newfile.write(newline)
+                for m in range(1, 13):
+                    newfile.write('0.00000           \'PRCSTD({})\'\n'.format(m))
+                for m in range(1, 13):
+                    newfile.write('0.00000           \'PRCSKW({})\'\n'.format(m))
+                while 'TMN2M(1)' not in line:
+                    line = old_file.next()
+                for m in range(1, 13):
+                    item = temp_subs.get_value(m, 'tmin')
+                    newline = '{:<8.5f}          \'TMN2M({})\'\n'.format(item,
+                                                                         m)
+                    newfile.write(newline)
+                for m in range(1, 13):
+                    item = temp_subs.get_value(m, 'tmax')
+                    newline = '{:<8.5f}          \'TMX2M({})\'\n'.format(item,
+                                                                         m)
+                    newfile.write(newline)
+                while 'TM' in line:
+                    line = old_file.next()
+                while line:
+                    newfile.write(line)
+                    try:
+                        line = old_file.next()
+                    except StopIteration:
+                        break
+        shutil.copyfile(abs_path, site_file)
+        os.remove(abs_path)
+    
 def laikipia_regional_properties_workflow():
     """Nasty list of datasets and functions performed to process inputs for
     regional properties in Laikipia"""
