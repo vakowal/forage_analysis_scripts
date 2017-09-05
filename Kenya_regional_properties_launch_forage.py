@@ -683,8 +683,10 @@ def summarize_cp_content(outer_dir):
     save_as = os.path.join(outer_dir, 'cp_summary.csv')
     sum_df.to_csv(save_as)
         
+def back_calc_workflow():
+    """Functions that were called under main when I was doing back-calc runs on
+    regional properties."""
     
-if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     # run_baseline(site_csv)
     # combine_summary_files(site_csv)
@@ -698,4 +700,75 @@ if __name__ == "__main__":
     # run_preset_densities()
     # summarize_offtake()
     summarize_remaining_biomass()
+
+def back_calc_regional_avg():
     
+    # back-calculate to match average biomass on regional properties in 2014
+    century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\back_calc_match_2014"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\back_calc_match_2014"
+    fix_file = 'drytrpfi.100'
+    n_months = 24
+    vary = 'both'
+    live_or_total = 'total'
+    threshold = 10.0
+    max_iterations = 40
+    template_level = 'GH'
+    site = {'biomass': 248.7, 'date': 2014.58, 'name': 'prop_avg'}
+    # if not os.path.exists(out_dir):
+        # os.makedirs(out_dir) 
+    # backcalc.back_calculate_management(site, input_dir,
+                                       # century_dir, out_dir,
+                                       # fix_file, n_months,
+                                       # vary, live_or_total,
+                                       # threshold, max_iterations,
+                                       # template_level)
+    
+    # back-calculate forward to match average biomass on regional properties in 2015
+    century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\back_calc_match_2014"
+    out_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\back_calc_match_2015"
+    fix_file = 'drytrpfi.100'
+    n_months = 12
+    vary = 'both'
+    live_or_total = 'total'
+    threshold = 10.0
+    max_iterations = 40
+    template_level = 'GH'
+    site = {'biomass': 218.33, 'date': 2015.58, 'name': 'prop_avg'}
+    # if not os.path.exists(out_dir):
+        # os.makedirs(out_dir) 
+    # backcalc.back_calculate_management(site, input_dir,
+                                       # century_dir, out_dir,
+                                       # fix_file, n_months,
+                                       # vary, live_or_total,
+                                       # threshold, max_iterations,
+                                       # template_level)
+    save_raw = os.path.join(out_dir, "raw_summary.csv")
+    save_summary = os.path.join(out_dir, "schedule_summary.csv")
+    n_months = 13  # to go back to time when it should match scenario runs
+    backcalc.summarize_calc_schedules([site], n_months, input_dir, century_dir,
+                                      out_dir, save_raw, save_summary)
+                                                   
+def regional_scenarios():
+    """Run scenario analysis for regional properties."""
+    
+    # back_calc_regional_avg()
+    # run forward from 2014 measurement with empirical numbers (all inputs
+    # averaged across properties, including densities of different animal types)
+    forage_args = default_forage_args()
+    forage_args['start_month'] = 8
+    forage_args['num_months'] = 12
+    forage_args['latitude'] = 0.324
+    forage_args[u'user_define_protein'] = 1
+    forage_args['input_dir'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios"
+    forage_args['grass_csv'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\regional_grass_avg.csv"
+    for ecol_class in ['livestock', 'integrated', 'wildlife']:
+        forage_args['herbivore_csv'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\herbivores_regional_scenarios_{}.csv".format(ecol_class)
+        outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_densities\{}".format(ecol_class)
+        forage_args['outdir'] = outdir
+        forage.execute(forage_args)
+    
+if __name__ == "__main__":
+    # regional_scenarios()
+    back_calc_regional_avg()
