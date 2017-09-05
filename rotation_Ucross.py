@@ -27,7 +27,7 @@ def default_forage_args():
             'DOY': 1,
             'start_year': 2002,
             'start_month': 1,
-            'num_months': 36,
+            'num_months': 60,
             'mgmt_threshold': 0.01,
             'input_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross',
             'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
@@ -67,20 +67,20 @@ def composition_wrapper():
     benefit of rotation as mediated by changes in pasture composition."""
     
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross"
-    comp_filename = os.path.join(outer_outdir, 'proportion_summary_36_mo.csv')
+    comp_filename = os.path.join(outer_outdir, 'proportion_summary_0_anim.csv')
     bene_filename = os.path.join(outer_outdir, 'benefit_rot_36_mo.csv')
     high_cp_label = 'high_quality'
     low_cp_label = 'low_quality'
     
     # fixed
-    num_animals = 280 # original from Ucross description: 350
+    num_animals = 0 # original from Ucross description: 350
     total_area_ha = 688
     cp_mean = 0.1545
-    cp_ratio_list = [1.1, 1.2]
+    cp_ratio_list = [1, 1.2] # , 1.2]
     
     # vary
-    n_pasture_list = [2, 3]  # , 4]
-    high_quality_perc_list = [0.1, 0.2]  # , 0.4, 0.5, 0.6]
+    n_pasture_list = [3]  # , 4]
+    high_quality_perc_list = [0.5]  # , 0.2]  # , 0.4, 0.5, 0.6]
 
     df_list = []
     result_dict = {'n_pastures': [], 'high_quality_perc': [],
@@ -98,36 +98,36 @@ def composition_wrapper():
                                     'control_{}_v_{}_perc_{}'.format(
                                     high_quality_perc, (1-high_quality_perc),
                                     cp_ratio))
-            if not os.path.exists(os.path.join(cont_dir,
-                                  'summary_results.csv')):
-                control(num_animals, total_area_ha, cont_dir, remove_months)
+            # if not os.path.exists(os.path.join(cont_dir,
+                                  # 'summary_results.csv')):
+            control(num_animals, total_area_ha, cont_dir, remove_months)
             for n_pastures in n_pasture_list:
                 rot_dir = os.path.join(outer_outdir,
                                       'rot_{}_pastures_{}_v_{}_perc_{}'.format(
                                          n_pastures, high_quality_perc,
                                          (1-high_quality_perc),
                                          cp_ratio))
-                if not os.path.exists(os.path.join(rot_dir,
-                                      'pasture_summary.csv')):
-                    blind_treatment(num_animals, total_area_ha, n_pastures,
-                                    rot_dir, remove_months)
+                # if not os.path.exists(os.path.join(rot_dir,
+                                      # 'pasture_summary.csv')):
+                blind_treatment(num_animals, total_area_ha, n_pastures,
+                                rot_dir, remove_months)
                 diff_df = proportion_high_quality(cont_dir, rot_dir)
                 diff_df['n_pastures'] = [n_pastures] * len(diff_df.index)
                 diff_df['high_quality_perc'] = [high_quality_perc] * len(
                                                                      diff_df.index)
                 diff_df['cp_ratio'] = [cp_ratio] * len(diff_df.index)
                 df_list.append(diff_df)
-                gain_diff, pasture_diff = rotation.calc_productivity_metrics(
-                                                                 cont_dir, rot_dir)
+                # gain_diff, pasture_diff = rotation.calc_productivity_metrics(
+                                                                 # cont_dir, rot_dir)
                 result_dict['n_pastures'].append(n_pastures)
                 result_dict['high_quality_perc'].append(high_quality_perc)
                 result_dict['cp_ratio'].append(cp_ratio)
-                result_dict['gain_%_diff'].append(gain_diff)
+                # result_dict['gain_%_diff'].append(gain_diff)
     composition_effect_df = pd.concat(df_list)
     composition_effect_df.to_csv(comp_filename)
     
-    result_df = pd.DataFrame(result_dict)
-    result_df.to_csv(bene_filename)
+    # result_df = pd.DataFrame(result_dict)
+    # result_df.to_csv(bene_filename)
 
 def proportion_high_quality(cont_dir, rot_dir):
     """contrast the proportion of high quality grass between continuous and
@@ -269,7 +269,89 @@ def zero_sd():
     
     forage_args = default_forage_args()
     control(num_animals, total_area_ha, outdir)
+
+def generate_grz_months_rest_period(total_steps, rest_period):
+    """Generate grazing months to be supplied to the model. Start month is the
+    first month of grazing (where month 0 is the first month of the
+    simulation). Rest period is the number of months after each grazing month
+    where grazing does not occur."""
     
+    grz_months = [(rest_period + 1) * m for m in xrange(0, total_steps)]
+    grz_months = [m for m in grz_months if m < total_steps]
+    return grz_months
+
+def rest_effect_wrapper():
+    """Can we show that there are any beneficial effects to grazing, or to
+    grazing with rest?"""
+    
+    # first run with no grazing
+    outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rest_effect\zero_sd"
+    num_animals = 0
+    total_area_ha = 1
+    
+    forage_args = default_forage_args()
+    forage_args['grass_csv'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_inputs\Ucross\grass_high_quality_only.csv"
+    rotation.continuous(forage_args, total_area_ha, num_animals, outdir)
+    
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rest_effect"
+    remove_months = [1, 2, 3, 11, 12]
+    sd_list = [0.25, 0.5, 0.75, 1]
+    for sd in sd_list:
+        num_animals = sd
+        outdir = os.path.join(outer_dir, '{}_cont'.format(sd))
+        rotation.continuous(forage_args, total_area_ha, num_animals, outdir,
+                            remove_months)
+        for rest_period in [1, 2, 3, 4]:
+            forage_args['grz_months'] = generate_grz_months_rest_period(
+                                            forage_args['num_months'],
+                                            rest_period)
+            outdir = os.path.join(outer_dir,
+                                  '{}_rest_{}_per_ha'.format(rest_period, sd))
+            forage_args['outdir'] = outdir
+            rotation.modify_stocking_density(forage_args['herbivore_csv'], sd)
+            forage.execute(forage_args)
+
+def collect_results():
+    """Very hack-y way to collect results from rest rotation experiment."""
+    
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rest_effect\summary_figs\rest_effect_summary.csv"
+    
+    def get_from_century_results(outdir, sd, treatment, rest_period):
+        cent_file = os.path.join(outdir, 'CENTURY_outputs_m12_y2006', 'high_quality.lis')
+        cent_df = pd.io.parsers.read_fwf(cent_file, skiprows = [1])
+        df_subset = cent_df[(cent_df.time >= 2002) & (cent_df.time <= 2007)]
+        outputs = df_subset[['time', 'aglivc', 'stdedc', 'bglivc', 'somtc']]
+        outputs = outputs.assign(sd=sd)
+        outputs = outputs.assign(treatment=treatment)
+        outputs = outputs.assign(rest_period=rest_period)
+        return outputs
+    
+    df_list = []
+    # zero sd
+    outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rest_effect\zero_sd"
+    sd = 0
+    treatment = 'continuous'
+    rest_period = 'NA'
+    df_list.append(get_from_century_results(outdir, sd, treatment, rest_period))
+    outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\rest_effect"
+    sd_list = [0.25, 0.5, 0.75, 1]
+    for sd in sd_list:
+        # continuous
+        treatment = 'continuous'
+        rest_period = 'NA'
+        outdir = os.path.join(outer_dir, '{}_cont'.format(sd))
+        df_list.append(get_from_century_results(outdir, sd, treatment,
+                                                rest_period))
+        for rest_period in [1, 2, 3, 4]:
+            treatment = 'rest_rotation'
+            # rotated
+            outdir = os.path.join(outer_dir,
+                                  '{}_rest_{}_per_ha'.format(rest_period, sd))
+            df_list.append(get_from_century_results(outdir, sd, treatment,
+                                                    rest_period))
+    rest_result_df = pd.concat(df_list)
+    rest_result_df.to_csv(save_as)
+
 def erase_intermediate_files(outerdir):
     for folder in os.listdir(outerdir):
         try:
@@ -291,4 +373,6 @@ def erase_intermediate_files(outerdir):
             continue
 
 if __name__ == "__main__":
-    composition_wrapper()
+    # rest_effect_wrapper()
+    collect_results()
+    
