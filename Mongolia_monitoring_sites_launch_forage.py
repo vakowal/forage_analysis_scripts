@@ -27,7 +27,7 @@ def default_forage_args():
             'user_define_digestibility': 0,
             'herbivore_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_inputs/cashmere_goats.csv",
             'grass_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_inputs/grass.csv",
-            'restart_monthly': 1,
+            'restart_monthly': 0,
             }
     return forage_args
 
@@ -58,21 +58,43 @@ def run_zero_sd(site_csv):
     biomass as a first step."""
     
     forage_args = default_forage_args()
+    forage_args['input_dir'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing"
     modify_stocking_density(forage_args['herbivore_csv'], 0)
     outer_outdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/zero_sd'
     site_list = pd.read_csv(site_csv).to_dict(orient='records')
+    for site in site_list:
+        forage_args['latitude'] = site['latitude']
+        forage_args['outdir'] = os.path.join(outer_outdir,
+                                             '{}'.format(site['site']))
+        edit_grass_csv(forage_args['grass_csv'], site['site'])
+        forage.execute(forage_args)
+        
+def run_avg_sd(site_csv):
+    """Run the model with average animal density."""
+    
+    forage_args = default_forage_args()
+    remove_months = [1, 2, 3, 11, 12]
+    grz_months = range(0, forage_args['num_months'])
+    for r in remove_months:
+        grz_months = [m for m in grz_months if (m % 12) != (r - 1)]
+    forage_args['grz_months'] = grz_months
+    forage_args['input_dir'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing"
+    modify_stocking_density(forage_args['herbivore_csv'], 0.02)
+    outer_outdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/empirical_sd'
+    site_list = pd.read_csv(site_csv).to_dict(orient='records')
     # for site in site_list:
     site = site_list[0]
+    import pdb; pdb.set_trace()  # verify st17
     forage_args['latitude'] = site['latitude']
     forage_args['outdir'] = os.path.join(outer_outdir,
                                          '{}'.format(site['site']))
     edit_grass_csv(forage_args['grass_csv'], site['site'])
     forage.execute(forage_args)
-
+    
 def compare_biomass(site_csv, save_as):
     """Compare simulated and empirical biomass at Boogie's monitoring sites."""
     
-    outer_outdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/zero_sd'
+    outer_outdir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd'
     emp_list = pd.read_csv(site_csv)
     emp_list.set_index(['site'], inplace=True)
     emp_list['sim_gm2'] = ""
@@ -89,8 +111,9 @@ def compare_biomass(site_csv, save_as):
     emp_list.to_csv(save_as)
         
 if __name__ == "__main__":
-    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites.csv"
-    run_zero_sd(site_csv)
-    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/zero_sd/biomass_summary.csv'
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites_median_grass_forb_biomass.csv"
+    # run_zero_sd(site_csv)
+    run_avg_sd(site_csv)
+    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd/biomass_summary.csv'
     # compare_biomass(site_csv, save_as)
     
