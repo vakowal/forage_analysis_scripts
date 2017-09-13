@@ -294,10 +294,10 @@ def make_sch_files_mongolia():
         shutil.copyfile(abs_path, save_as)
         os.remove(abs_path)
      
-    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs"
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing"
     site_list = [n[:-4] for n in os.listdir(input_dir) if n.startswith('st') and n.endswith('.100')]
-    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\st1_hist.sch"
-    template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\st1.sch"
+    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing\st1_hist.sch"
+    template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing\st1.sch"
     for site in site_list:
         save_as = os.path.join(input_dir, '{}.sch'.format(site))
         copy_sch_file(template_sch, site, save_as)
@@ -908,8 +908,8 @@ def mongolia_workflow():
     
     point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\monitoring_points.shp"
     save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
-    process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), save_as,
-                           point_shp=point_shp)
+    # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), save_as,
+                           # point_shp=point_shp)
     
     save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
     # process_worldclim_precip(os.path.join(clipped_outer_folder, 'precip'),
@@ -917,8 +917,8 @@ def mongolia_workflow():
     soil_table = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/data/summaries_GK/soil_0_20_cm.csv'
     template = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\st1.100"
     save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs"
-    write_site_files_mongolia(template, soil_table, save_dir)
-    worldclim_to_site_file(save_dir)
+    # write_site_files_mongolia(template, soil_table, save_dir)
+    # worldclim_to_site_file(save_dir)
     make_sch_files_mongolia()
 
 def ucross_workflow():
@@ -931,5 +931,5 @@ def ucross_workflow():
     wth_to_site_100(wth_file, site_template, save_as)
 
 if __name__ == "__main__":
-    laikipia_regional_properties_workflow()
+    mongolia_workflow()
     

@@ -374,5 +374,7 @@ def erase_intermediate_files(outerdir):
 
 if __name__ == "__main__":
     # rest_effect_wrapper()
-    collect_results()
+    # collect_results()
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\avg_sd"
+    erase_intermediate_files(outerdir)
     
