@@ -9,8 +9,7 @@ from tempfile import mkstemp
 import pandas as pd
 import numpy as np
 import back_calculate_management as backcalc
-sys.path.append(
- 'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+sys.path.append(r'C:\Users\Ginger\Documents\Python\rangeland_production')
 import forage_century_link_utils as cent
 import forage
 
