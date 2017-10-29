@@ -9,8 +9,7 @@ import math
 from tempfile import mkstemp
 import pandas
 import back_calculate_management as backcalc
-sys.path.append(
- 'C:/Users/Ginger/Documents/Python/invest_forage_dev/src/natcap/invest/forage')
+sys.path.append(r'C:\Users\Ginger\Documents\Python\rangeland_production')
 import forage_century_link_utils as cent
 
 def split_hist_sch():
@@ -329,18 +328,18 @@ def collect_results(save_as):
                                'CENTURY_outputs_iteration{}'.format(final_sim),
                                '{}.lis'.format(site_name))
         biomass_df = cent.read_CENTURY_outputs(output_file, year - 1, year + 1)
-        sim_months = [date_dict[year] + x for x in [0, 0.08, 0.17]]
+        sim_months = [date_dict[year] + x for x in [0, 0.08, 0.17, 0.25]]
         if year == 2014:
             sim_months[1] = 2014.17
         sim_dat = biomass_df.loc[sim_months]
         sim_series = sim_dat.aglivc + sim_dat.stdedc
         
-        sum_dict['site'].extend([site_name] * 7)
+        sum_dict['site'].extend([site_name] * 8)
         sum_dict['biomass'].extend(emp_series)
         sum_dict['sim_vs_emp'].extend(['empirical'] * 4)
         sum_dict['date'].extend(emp_dates)
         sum_dict['biomass'].extend(sim_series)
-        sum_dict['sim_vs_emp'].extend(['simulated'] * 3)
+        sum_dict['sim_vs_emp'].extend(['simulated'] * 4)
         sum_dict['date'].extend(sim_series.index)
     sum_df = pandas.DataFrame(sum_dict)
     sum_df.to_csv(save_as)
@@ -371,6 +370,6 @@ def calc_management():
 if __name__ == "__main__":
     # generate_inputs()
     # calc_management()
-    save_as = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Jenny/Comparisons_with_CENTURY/back_calc_mgmt_9.13.16/calculated_management_summary.csv"
-    # collect_results(save_as)
-    summarize_calc_schedules(save_as)
+    save_as = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Kenya/From_Jenny/Comparisons_with_CENTURY/back_calc_mgmt_9.13.16/comparison_summary_sim_ext.csv"
+    collect_results(save_as)
+    # summarize_calc_schedules(save_as)
