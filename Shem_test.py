@@ -34,7 +34,7 @@ def run_test():
 
     supp_list = (pandas.read_csv(supp_csv)).to_dict(orient='records')
     supp_info = supp_list[0]
-    supp = forage.Supplement(FreerParam.FreerParamCattle('indicus'),
+    supp = forage.Supplement(FreerParam.FreerParamCattle('indicus_x_taurus'),
                              supp_info['digestibility'],
                              supp_info['kg_per_day'], supp_info['M_per_d'],
                              supp_info['ether_extract'],
@@ -42,7 +42,7 @@ def run_test():
                              supp_info['rumen_degradability'])
     if supp.DMO > 0.:
         supp_available = 1
-    supp_available = 0  # change to allow supplementation
+    # supp_available = 0  # change to allow supplementation
     with open(out_name, 'wb') as out:
         writer = csv.writer(out, delimiter=',')
         header = ['red_max_intake', 'max_intake', 'intake_forage',
@@ -70,6 +70,20 @@ def run_test():
                 row.append('Schem_et_al')
                 writer.writerow(row)
 
+def modify_herb_csv(herbivore_csv, CM2, CM12, CK13, CG2):
+    """Modify calibration parameters of the herbivore csv used as input to the
+    forage model."""
+    
+    df = pd.read_csv(herbivore_csv)
+    df = df.set_index(['index'])
+    assert len(df) == 1, "We can only handle one herbivore type"
+    df['stocking_density'] = df['stocking_density'].astype(float)
+    df.set_value(0, 'CM2', CM2)
+    df.set_value(0, 'CM12', CM12)
+    df.set_value(0, 'CK13', CK13)
+    df.set_value(0, 'CG2', CG2)
+    df.to_csv(herbivore_csv)
+    
 def process_summary(pub_file, out_name):
     pub_dat = pandas.read_csv(pub_file)
     df = pandas.read_csv(out_name)
