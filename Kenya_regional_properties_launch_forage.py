@@ -144,7 +144,7 @@ def run_preset_densities():
                  'total_yearly_delta_weight_kg_per_ha': []}
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
-    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\herd_avg_uncalibrated_constant_cp_GL_est_densities"  # herd_avg_uncalibrated_constant_cp_GL" # herd_avg_uncalibrated_0.3_vary_cp"
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\herd_avg_uncalibrated_varying_cp_GL_est_densities"  # herd_avg_uncalibrated_constant_cp_GL" # herd_avg_uncalibrated_0.3_vary_cp"
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015"
     forage_args = default_forage_args()
     forage_args['user_define_protein'] = 1
@@ -155,21 +155,22 @@ def run_preset_densities():
     # for density in density_list:
     for site in site_list:
         density = site['back_calc_avg_animals_per_ha']
-        # density = 0.3
+        # density = 0.3  # mean reported density across properties
         outdir = os.path.join(outer_outdir,
                               'site_{:d}_{}'.format(int(site['name']), density))
         modify_stocking_density(template_herb_csv, density)
         grass_csv = os.path.join(input_dir,
                                  '{:d}.csv'.format(int(site['name'])))
-        # initialize_n_mult(grass_csv)
-        add_cp_to_grass_csv(grass_csv, target)
+        initialize_n_mult(grass_csv)
+        # add_cp_to_grass_csv(grass_csv, target)
         forage_args['grass_csv'] = grass_csv
         forage_args['latitude'] = site['lat']
         forage_args['outdir'] = outdir
         # if not succeeded:  # os.path.exists(outdir):
-            # calc_n_mult(forage_args, target)
+        if density > 0:
+            calc_n_mult(forage_args, target)
         # try:
-            # forage.execute(forage_args)
+        forage.execute(forage_args)
         # except:
             # import pdb; pdb.set_trace()
             # continue
@@ -934,5 +935,5 @@ def regional_scenarios_by_property():
         
 if __name__ == "__main__":
     # regional_scenarios()
-    regional_scenarios_by_property()
-    
+    # regional_scenarios_by_property()
+    run_preset_densities()
