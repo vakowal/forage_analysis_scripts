@@ -280,55 +280,65 @@ def calc_n_mult(forage_args, target):
     crude protein of live grass. Target should be supplied as a float between 0
     and 1."""
     
-    # TODO THIS VERSION IS BUGGY!! USE THE VERSION IN OPC_INTEGRATED_TEST.PY
-    # verify that N multiplier is initially set to 1
+    tolerance = 0.001  # must be within this proportion of target value
     grass_df = pd.read_csv(forage_args['grass_csv'])
     grass_label = grass_df.iloc[0].label
-    current_value = grass_df.iloc[0].N_multiplier
-    assert current_value == 1, "Initial value for N multiplier must be 1"
-    
-    # launch model to get initial crude protein content
+    # args copy to launch model to calculate n_mult
     args_copy = forage_args.copy()
     args_copy['outdir'] = os.path.join(os.path.dirname(forage_args['outdir']),
                                        '{}_n_mult_calc'.format(
                                       os.path.basename(forage_args['outdir'])))
-    i = 1
-    while i < 3:  # do this twice, to better approximate n_mult
-        forage.execute(args_copy)
-        
-        # find output
-        final_month = forage_args[u'start_month'] + forage_args['num_months'] - 1
-        if final_month > 12:
-            mod = final_month % 12
-            if mod == 0:
-                month = 12
-                year = (final_month / 12) + forage_args[u'start_year'] - 1
-            else:
-                month = mod
-                year = (final_month / 12) + forage_args[u'start_year']
+    # find correct output time period
+    final_month = forage_args[u'start_month'] + forage_args['num_months'] - 1
+    if final_month > 12:
+        mod = final_month % 12
+        if mod == 0:
+            month = 12
+            year = (final_month / 12) + forage_args[u'start_year'] - 1
         else:
-            month = final_month
-            year = ((forage_args['num_months'] - 1) / 12) + \
-                                                     forage_args[u'start_year']
-        intermediate_dir = os.path.join(args_copy['outdir'],
-                                        'CENTURY_outputs_m%d_y%d' % (month, year))
-        sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
-        
+            month = mod
+            year = (final_month / 12) + forage_args[u'start_year']
+    else:
+        month = final_month
+        year = ((forage_args['num_months'] - 1) / 12) + forage_args[u'start_year']
+    intermediate_dir = os.path.join(args_copy['outdir'],
+                                    'CENTURY_outputs_m%d_y%d' % (month, year))
+    sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
+    first_year = forage_args['start_year']
+    last_year = year
+    
+    def get_raw_cp_green():
         # calculate n multiplier to achieve target
-        first_year = forage_args['start_year']
-        last_year = year
         outputs = cent.read_CENTURY_outputs(sim_output, first_year, last_year)
         outputs.drop_duplicates(inplace=True)
-        cp_green = np.mean(outputs.aglive1 / outputs.aglivc)
-        n_mult = '%.2f' % (target / cp_green)
-
+        
+        # restrict to months of the simulation
+        first_month = forage_args[u'start_month']
+        start_date = first_year + float('%.2f' % (first_month / 12.))
+        end_date = last_year + float('%.2f' % (month / 12.))
+        outputs = outputs[(outputs.index >= start_date)]
+        outputs = outputs[(outputs.index <= end_date)]
+        return np.mean(outputs.aglive1 / outputs.aglivc)
+    
+    def set_n_mult():
         # edit grass csv to reflect calculated n_mult
         grass_df = pd.read_csv(forage_args['grass_csv'])
         grass_df.N_multiplier = grass_df.N_multiplier.astype(float)
         grass_df = grass_df.set_value(0, 'N_multiplier', float(n_mult))
         grass_df = grass_df.set_index('label')
         grass_df.to_csv(forage_args['grass_csv'])
-        i = i + 1
+    
+    n_mult = 1
+    set_n_mult()
+    forage.execute(args_copy)
+    cp_green = get_raw_cp_green()
+    diff = abs(target - (n_mult * cp_green))
+    while diff > tolerance:
+        n_mult = '%.10f' % (target / cp_green)
+        set_n_mult()
+        forage.execute(args_copy)
+        cp_green = get_raw_cp_green()
+        diff = abs(target - (float(n_mult) * cp_green))
 
 def calc_n_months(match_csv, site_name):
     """Calculate the number of months to run the model, from 2014 measurement
