@@ -896,7 +896,113 @@ def back_calc_regional_avg():
     n_months = 13  # to go back to time when it should match scenario runs
     backcalc.summarize_calc_schedules([site], n_months, input_dir, century_dir,
                                       out_dir, save_raw, save_summary)
-                                                   
+
+def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
+    """Run each property forward from schedule matching biomass in 2014, at
+    mean animal densities for each ecolclass. This is a mishmash of
+    regional_scenarios() and empirical_densities_forward()"""
+    
+    live_cp = 0.1473
+    dead_cp = 0.0609  # averages from lit review
+    
+    # compare these results to those from back_calc_forward
+    forage_args = default_forage_args()
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_forward_from_2014"
+    site_list = generate_inputs(match_csv, 2014, 'total')
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
+    lat_df = pd.read_csv(site_csv)
+    
+    # move inputs (graz and schedule file) from back-calc results directory
+    # to this new input directory
+    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\empty_after_2014"
+    
+    century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
+    fix_file = 'drytrpfi.100'
+    forage_args['input_dir'] = input_dir
+    for site in site_list:
+        if site['name'] == '12':
+            continue  # skip Lombala
+        # find graz file associated with back-calc management
+        graz_filter = [f for f in os.listdir(input_dir) if
+                       f.startswith('graz_{}'.format(site['name']))]
+        if len(graz_filter) == 1:
+            graz_file = os.path.join(input_dir, graz_filter[0])
+            def_graz_file = os.path.join(century_dir, 'graz.100')
+            shutil.copyfile(def_graz_file, os.path.join(century_dir,
+                            'default_graz.100'))
+            shutil.copyfile(graz_file, def_graz_file)
+        
+        # modify crude protein of grass for this site, set N_mult to 1
+        grass_csv = os.path.join(input_dir, '{}.csv'.format(site['name']))
+        set_grass_cp(grass_csv, live_cp, dead_cp)
+        forage_args['grass_csv'] = grass_csv     
+        
+        # calculate n_months to run as difference between
+        # 2014 and 2015 measurements
+        n_months = calc_n_months(match_csv, site['name'])
+        forage_args['num_months'] = n_months
+        forage_args['start_year'] = 2014
+        mo_float = (site['date'] - 2014) * 12.0
+        if mo_float - int(mo_float) > 0.5:
+            month = int(mo_float) + 2
+        else:
+            month = int(mo_float) + 1
+        forage_args['start_month'] = month
+        
+        # run with animal densities reflecting each ecol class
+        for ecol_class in ['livestock', 'integrated', 'wildlife']:
+            forage_args['herbivore_csv'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\herbivores_regional_scenarios_{}.csv".format(ecol_class)
+            out_dir_site = os.path.join(empir_outdir,
+                                        '{}_{}'.format(site['name'],
+                                                       ecol_class))
+            forage_args['outdir'] = out_dir_site
+            if not os.path.exists(out_dir_site):
+                os.makedirs(out_dir_site)
+                forage_args['latitude'] = (lat_df[lat_df.name == int(site['name'])].lat).tolist()[0]
+                forage.execute(forage_args)
+            # collect biomass at 2015 measurement date for each ecolclass
+        
+        if len(graz_filter) == 1:
+            shutil.copyfile(os.path.join(century_dir, 'default_graz.100'),
+                            def_graz_file)
+            os.remove(os.path.join(century_dir, 'default_graz.100'))
+
+    def collect_biomass():
+        """summarize biomass at each ecolclass within each property"""
+        
+        sum_dict = {'site': [], 'ecolclass': [], 'green_biomass': [],
+                    'total_biomass': []}
+        site_list = generate_inputs(match_csv, 2015, 'total')
+        for site in site_list:
+            if site['name'] == '12':
+                continue  # skip Lombala
+            match_year = 2015
+            mo_float = (site['date'] - 2015) * 12.0
+            if mo_float - int(mo_float) > 0.5:
+                match_month = int(mo_float) + 1
+            else:
+                match_month = int(mo_float)
+            for ecol_class in ['livestock', 'integrated', 'wildlife']:
+                out_dir_site = os.path.join(empir_outdir,
+                                            '{}_{}'.format(site['name'],
+                                                           ecol_class))
+                emp_res = pd.read_csv(os.path.join(out_dir_site,
+                                                   'summary_results.csv'))
+                emp_subs = emp_res.loc[(emp_res.year == match_year) &
+                                       (emp_res.month == match_month)]
+                if emp_subs.shape[0] != 1:
+                    import pdb; pdb.set_trace()
+                gre_biomass = emp_subs.iloc[0]['{}_green_kgha'.format(site['name'])] * 0.1
+                tot_biomass = (emp_subs.iloc[0]['{}_dead_kgha'.format(site['name'])] + 
+                               emp_subs.iloc[0]['{}_green_kgha'.format(site['name'])]) * 0.1
+                sum_dict['site'].append(site['name'])
+                sum_dict['ecolclass'].append(ecol_class)
+                sum_dict['green_biomass'].append(gre_biomass)
+                sum_dict['total_biomass'].append(tot_biomass)
+        sum_df = pd.DataFrame(sum_dict)
+        sum_df.to_csv(save_as)
+    collect_biomass()
+        
 def regional_scenarios():
     """Run scenario analysis for regional properties."""
     
@@ -936,4 +1042,8 @@ def regional_scenarios_by_property():
 if __name__ == "__main__":
     # regional_scenarios()
     # regional_scenarios_by_property()
-    run_preset_densities()
+    # run_preset_densities()
+    match_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\regional_PDM_summary.csv"
+    outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_densities_within_property"
+    save_as = os.path.join(outdir, "biomass_summary.csv")
+    scenario_mean_ecolclass_by_property(match_csv, outdir, save_as)
