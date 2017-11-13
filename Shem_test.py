@@ -10,8 +10,10 @@ import forage_century_link_utils as cent
 import freer_param as FreerParam
 import csv
 import pandas
+import numpy as np
 
 def run_test():
+    SRW_list = np.linspace(160, 600, 9).tolist()
     total_SD = 1.
     site = forage.SiteInfo(1., -3.25)
     prop_legume = 0.0
@@ -20,14 +22,13 @@ def run_test():
     sex = 'entire_m'
     herd_size = 1
     DOY_start = 1
-    outdir = r'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/Verification_calculations/Shem_et_al_1995/revisions_10_12'
+    outdir = r'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/Verification_calculations/Shem_et_al_1995/revisions_10_12/summary_unsupplemented'
     if not os.path.exists(outdir):
         os.makedirs(outdir)
     time_step = 'day'
     forage.set_time_step(time_step)
     supp_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Shem_et_al_1995_supp.csv"
     herbivore_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herbivore_Shem_et_al.csv"
-    herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
     grass_csv = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/grasses_Shem_et_al_1995.csv"
     grass_list = (pandas.read_csv(grass_csv)).to_dict(orient='records')
     out_name = os.path.join(outdir, "summary.csv")
@@ -42,39 +43,52 @@ def run_test():
                              supp_info['rumen_degradability'])
     if supp.DMO > 0.:
         supp_available = 1
-    # supp_available = 0  # change to allow supplementation
+    supp_available = 0  # change to allow supplementation
     with open(out_name, 'wb') as out:
         writer = csv.writer(out, delimiter=',')
         header = ['red_max_intake', 'max_intake', 'intake_forage',
                   'intake_supp', 'daily_gain', 'grass_label',
-                  'step', 'study']
+                  'step', 'study', 'SRW']
         writer.writerow(header)
-        for grass in grass_list:
-            one_grass = [grass]
-            available_forage = forage.calc_feed_types(one_grass)
-            herbivore_list = []
-            for h_class in herbivore_input:
-                herd = forage.HerbivoreClass(h_class)
-                herd.update()
-                herbivore_list.append(herd)
-                print "beginning weight: " + str(herd.W)
-                print "beginning BC: " + str(herd.BC)
-                print "SRW: " + str(herd.SRW)
-            for step in xrange(60):
-                DOY = DOY_start + step
-                row = forage.one_step(site, DOY, herd,
-                                      available_forage, prop_legume,
-                                      supp_available, supp)
-                row.append(grass['label'])
-                row.append(step)
-                row.append('Schem_et_al')
-                writer.writerow(row)
+        for SRW in SRW_list:
+            modify_SRW(herbivore_csv, SRW)
+            herbivore_input = (pandas.read_csv(herbivore_csv)).to_dict(orient='records')
+            for grass in grass_list:
+                one_grass = [grass]
+                available_forage = forage.calc_feed_types(one_grass)
+                herbivore_list = []
+                for h_class in herbivore_input:
+                    herd = forage.HerbivoreClass(h_class)
+                    herd.update()
+                    herbivore_list.append(herd)
+                    print "beginning weight: " + str(herd.W)
+                    print "beginning BC: " + str(herd.BC)
+                    print "SRW: " + str(herd.SRW)
+                for step in xrange(60):
+                    DOY = DOY_start + step
+                    row = forage.one_step(site, DOY, herd,
+                                          available_forage, prop_legume,
+                                          supp_available, supp)
+                    row.append(grass['label'])
+                    row.append(step)
+                    row.append('Schem_et_al')
+                    row.append(SRW)
+                    writer.writerow(row)
+
+def modify_SRW(herbivore_csv, SRW):
+    """Modify SRW in the herbivore csv."""
+    
+    df = pandas.read_csv(herbivore_csv)
+    df = df.set_index(['index'])
+    assert len(df) == 1, "We can only handle one herbivore type"
+    df.set_value(0, 'SRW', int(SRW))
+    df.to_csv(herbivore_csv)
 
 def modify_herb_csv(herbivore_csv, CM2, CM12, CK13, CG2):
     """Modify calibration parameters of the herbivore csv used as input to the
     forage model."""
     
-    df = pd.read_csv(herbivore_csv)
+    df = pandas.read_csv(herbivore_csv)
     df = df.set_index(['index'])
     assert len(df) == 1, "We can only handle one herbivore type"
     df['stocking_density'] = df['stocking_density'].astype(float)
