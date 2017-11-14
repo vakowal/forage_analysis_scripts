@@ -180,6 +180,64 @@ def join_site_lat_long(zonal_shp, soil_table):
         print "Warning, temp files cannot be deleted"
         pass
 
+def namem_to_wth(namem_precip, namem_temp, input_folder):
+    """Write weather files from namem records."""
+    
+    temp_df = pd.read_csv(namem_temp)
+    prec_df = pd.read_csv(namem_precip)
+    namem_df = pd.merge(prec_df, temp_df, how='outer')
+    namem_df[['year', 'month']] = namem_df[['year', 'month']].astype(int)
+    year_list = namem_df['year'].unique().tolist()
+    year_list = range(min(year_list), max(year_list) + 1)
+    for site in namem_df.station_name.unique():
+        sub_df = namem_df.loc[(namem_df["station_name"] == site)]
+        sub_df = sub_df.sort(['year', 'month'])
+        # replace missing values with average value for each month
+        grouped = sub_df.groupby('month')
+        for year in year_list:
+            for month in range(1, 13):
+                test_df = sub_df.loc[(sub_df['month'] == month) &
+                                     (sub_df['year'] == year)]
+                if len(test_df) == 0:
+                    placeholder = pd.DataFrame({'month': [month],
+                                                'year': [year]})
+                    sub_df = pd.concat([sub_df, placeholder])
+        for mon in range(1, 13):
+            for label in ['min_temp', 'max_temp', 'precip_mm']:
+                fill_val = grouped.get_group(mon).mean()[label]
+                sub_df.loc[(sub_df['month'] == mon) &
+                           (sub_df[label].isnull()), label] = fill_val
+        trans_dict = {'label': ['prec'] * len(year_list), 'year': year_list * 3}
+        for mon in range(1, 13):
+            prec = sub_df.loc[(sub_df["month"] == mon),
+                              "precip_mm"].values.tolist()
+            if len(prec) != len(year_list):
+                import pdb; pdb.set_trace()
+            trans_dict[mon] = [v / 10.0 for v in prec]  # namem vals in mm
+            tmin = sub_df.loc[(sub_df['month'] == mon), 'min_temp'].values.tolist()
+            if len(tmin) != len(year_list):
+                import pdb; pdb.set_trace()
+            tmax = sub_df.loc[(sub_df['month'] == mon), 'max_temp'].values.tolist()
+            if len(tmax) != len(year_list):
+                import pdb; pdb.set_trace()
+            trans_dict[mon].extend(tmin)
+            trans_dict[mon].extend(tmax)
+        trans_dict['label'].extend(['tmin'] * len(year_list))
+        trans_dict['label'].extend(['tmax'] * len(year_list))
+        df = pd.DataFrame(trans_dict)
+        cols = df.columns.tolist()
+        cols = cols[-2:-1] + cols[-1:] + cols[:-2]
+        df = df[cols]        
+        df['sort_col'] = df['year']
+        df.loc[(df['label'] == 'prec'), 'sort_col'] = df.sort_col + 0.1
+        df.loc[(df['label'] == 'tmin'), 'sort_col'] = df.sort_col + 0.2
+        df.loc[(df['label'] == 'tmax'), 'sort_col'] = df.sort_col + 0.3
+        df = df.sort_values(by='sort_col')
+        df = df.drop('sort_col', 1)
+        formats = ['%4s', '%6s'] + ['%7.2f'] * 12
+        save_as = os.path.join(input_folder, '{}.wth'.format(site))
+        np.savetxt(save_as, df.values, fmt=formats, delimiter='')              
+                
 def write_site_files_mongolia(template, soil_table, save_dir):
     """Write the site.100 file; inspired by previous version of this function
     but made to work on soil table calculated from Boogie's database."""
@@ -919,7 +977,11 @@ def mongolia_workflow():
     save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs"
     # write_site_files_mongolia(template, soil_table, save_dir)
     # worldclim_to_site_file(save_dir)
-    make_sch_files_mongolia()
+    # make_sch_files_mongolia()
+    namem_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_precip.csv"
+    namem_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_temp.csv"
+    input_folder = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
+    namem_to_wth(namem_precip, namem_temp, input_folder)
 
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
