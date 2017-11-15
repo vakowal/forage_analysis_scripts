@@ -166,6 +166,12 @@ def join_site_lat_long(zonal_shp, soil_table):
 def write_soil_table(site_shp, soil_dir, save_as):
     """Make soil table to use as input for site files"""
     
+    # make a temporary copy of the point shapefile to append worldclim values
+    tempdir = tempfile.mkdtemp()
+    source_shp = site_shp
+    site_shp = os.path.join(tempdir, 'points.shp')
+    arcpy.Copy_management(source_shp, site_shp)
+        
     rasters = [f for f in os.listdir(soil_dir) if f.endswith('.tif')]
     field_list = [r[:6] for r in rasters]
     raster_files = [os.path.join(soil_dir, f) for f in rasters]
@@ -256,6 +262,8 @@ def write_site_files_mongolia(template, soil_table, save_dir):
     but made to work on soil table calculated from Boogie's database. (or from
     ISRIC soil grids)"""
     
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
     in_list = pd.read_csv(soil_table).to_dict(orient="records")
     for inputs_dict in in_list:
         fh, abs_path = mkstemp()
@@ -298,7 +306,8 @@ def write_site_files_mongolia(template, soil_table, save_dir):
         save_as = os.path.join(save_dir, '{}.100'.format((inputs_dict['site_id'])))
         shutil.copyfile(abs_path, save_as)
         os.remove(abs_path)
-        # generate weather statistics with worldclim_to_site_file()
+        # generate weather statistics with worldclim_to_site_file() or
+        # wth_to_site_file
     
 def write_site_files(template, soil_table, save_dir):
     """Write the site.100 file for each property, using the "zone" field in the
@@ -349,7 +358,8 @@ def write_site_files(template, soil_table, save_dir):
         os.remove(abs_path)
         # generate weather statistics (manually :( )
 
-def make_sch_files_mongolia():
+def make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            save_dir, site_wth_match_file=None):
     """Custom function inspired by make_sch_files() but for Mongolia inputs."""
     
     def copy_sch_file(template, site_name, save_as, wth_file=None):
@@ -358,11 +368,16 @@ def make_sch_files_mongolia():
         with open(abs_path, 'wb') as newfile:
             with open(template, 'rb') as old_file:
                 for line in old_file:
-                    if wth_file:
-                        if '  Weather choice' in line:
+                    if '  Weather choice' in line:
+                        if wth_file:
                             newfile.write('F             Weather choice\r\n')
                             newfile.write('{}\r\n'.format(wth_file))
                             line = old_file.next()
+                        else:
+                            newfile.write('M             Weather choice\r\n')
+                            line = old_file.next()
+                    if '.wth\r\n' in line:
+                        line = old_file.next()
                     if '  Site file name' in line:
                         item = '{:14}'.format('{}.100'.format(site_name))
                         newfile.write('{}Site file name\r\n'.format(item))
@@ -371,22 +386,20 @@ def make_sch_files_mongolia():
                     
         shutil.copyfile(abs_path, save_as)
         os.remove(abs_path)
-     
-    # input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing"
-    # site_list = [n[:-4] for n in os.listdir(input_dir) if n.startswith('st') and n.endswith('.100')]
-    input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
-    site_df = pd.read_csv(r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\isric_250m_soil.csv")
+
+    site_df = pd.read_csv(soil_table)
     site_list = site_df.site_id.unique().tolist()
-    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing\st1_hist.sch"
-    template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing\st1.sch"
-    site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\summaries_GK\CBM_SCP_points_nearest_soum_ctr.csv"
-    match_df = pd.read_csv(site_stn_match_table).set_index('site_id')
+    if site_wth_match_file:
+        match_df = pd.read_csv(site_wth_match_file).set_index('site_id')
     for site in site_list:
-        save_as = os.path.join(input_dir, '{}.sch'.format(site))
-        wth_stn = match_df.get_value(site, 'name_en')
-        wth = '{}.wth'.format(wth_stn)
+        save_as = os.path.join(save_dir, '{}.sch'.format(site))
+        if site_wth_match_file:
+            wth_stn = match_df.get_value(site, 'name_en')
+            wth = '{}.wth'.format(wth_stn)
+        else:
+            wth = None
         copy_sch_file(template_sch, site, save_as, wth_file=wth)
-        save_as = os.path.join(input_dir, '{}_hist.sch'.format(site))
+        save_as = os.path.join(save_dir, '{}_hist.sch'.format(site))
         copy_sch_file(template_hist, site, save_as)
         
 def make_sch_files(template_hist, template_extend, soil_table, save_dir):
@@ -423,8 +436,6 @@ def clip_rasters_arcpy(rasters_folder, clipped_folder, aoi_shp, endswith):
     
     to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
     raster_nodata = 9999
-    out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
-                                      os.path.join(rasters_folder, to_clip[0]))
     for r in to_clip:
         bil = os.path.join(rasters_folder, r)
         outExtractByMask = arcpy.sa.ExtractByMask(bil, aoi_shp)
@@ -672,14 +683,14 @@ def process_worldclim_temp(worldclim_folder, save_as, zonal_shp=None,
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[:5] if r[5] == '_' else r[:6] for r in rasters]  # [r[10:17] for r in rasters]  # 
+    field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'ORIG_FID')
-    month_list = [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # 
+    field_list.insert(0, 'site_id')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack 
     temp_dict = {'site': [], 'month': [], 'tmin': [], 'tmax': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -724,14 +735,15 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
     
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
-    field_list = [r[11:12] if r[12] == '.' else r[11:13] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]  # [r[10:17] for r in rasters]
+    # field_list = [r[11:12] if r[12] == '.' else r[11:13] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]  # [r[10:17] for r in rasters]
+    field_list = [r[15:17] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
     
     # read from shapefile to newly formatted table
-    field_list.insert(0, 'ORIG_FID')
-    month_list = [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  
+    field_list.insert(0, 'site_id')
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack 
     prec_dict = {'site': [], 'month': [], 'prec': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -739,7 +751,7 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
             prec_dict['site'].extend([site] * 12)
             for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[5:7]
+                month = int(field)
                 prec_dict['prec'].append(row[f_idx])
             prec_dict['month'].extend(month_list)
     prec_df = pd.DataFrame.from_dict(prec_dict)
@@ -858,21 +870,36 @@ def generate_site_csv(input_dir, save_as):
     site_df = pd.DataFrame(site_dict)
     site_df.to_csv(save_as, index=False)
 
-def namem_to_site_file(soil_table, site_stn_match_table, namem_precip,
-                       namem_temp, save_dir):
-    """Generate weather statistics from namem data, save to site file."""
+def get_site_weather_files(schedule_file, input_dir):
+    """Read filename of weather file from schedule file supplied to
+    CENTURY."""
     
-    prec_df = pd.read_csv(namem_precip)
-    temp_df = pd.read_csv(namem_temp)
-    namem_df = pd.merge(prec_df, temp_df, how='outer')
+    w_file = 'NA'
+    with open(schedule_file, 'r') as read_file:
+        for line in read_file:
+            if '.wth' in line:
+                if w_file != 'NA':
+                    er = "Error: two weather files found in schedule file"
+                    raise Exception(er)
+                else:
+                    w_name = re.search('(.+?).wth', line).group(1) + '.wth'
+                    w_file = os.path.join(input_dir, w_name)
+    return w_file
+    
+def wth_to_site_file(soil_table, input_dir):
+    """Generate weather statistics from the wth file specified in the .sch
+    file, save to site file. Identify site and sch files from the soil_table
+    and assume that the site.100, .sch files and .wth files are in the same
+    directory, input_dir."""
+    
     site_df = pd.read_csv(soil_table)
-    match_df = pd.read_csv(site_stn_match_table).set_index('site_id')
-    
     for site in site_df.site_id.unique().tolist():
-        wth_stn = match_df.get_value(site, 'name_en')
-        sub_df = namem_df.loc[(namem_df["station_name"] == wth_stn)]
-        grouped = sub_df.groupby('month')
-        site_file = os.path.join(save_dir, '{}.100'.format(site))
+        schedule_file = os.path.join(input_dir, '{}.sch'.format(site))
+        wth_file = get_site_weather_files(schedule_file, input_dir)
+        wth_df = pd.read_fwf(wth_file, header=None, names=['label', 'year']
+                             + range(1, 13))
+        grouped = wth_df.groupby('label')
+        site_file = os.path.join(input_dir, '{}.100'.format(site))
         fh, abs_path = mkstemp()
         os.close(fh)
         with open(abs_path, 'wb') as newfile:
@@ -882,7 +909,7 @@ def namem_to_site_file(soil_table, site_stn_match_table, namem_precip,
                     newfile.write(line)
                     line = old_file.next()
                 for m in range(1, 13):
-                    item = grouped.get_group(m).mean()['precip_mm'] / 10.0
+                    item = grouped.get_group('prec').mean()[m]
                     newline = '{:<8.5f}          \'PRECIP({})\'\n'.format(item,
                                                                           m)
                     newfile.write(newline)
@@ -893,12 +920,12 @@ def namem_to_site_file(soil_table, site_stn_match_table, namem_precip,
                 while 'TMN2M(1)' not in line:
                     line = old_file.next()
                 for m in range(1, 13):
-                    item = grouped.get_group(m).mean()['min_temp']
+                    item = grouped.get_group('tmin').mean()[m]
                     newline = '{:<8.5f}          \'TMN2M({})\'\n'.format(item,
                                                                          m)
                     newfile.write(newline)
                 for m in range(1, 13):
-                    item = grouped.get_group(m).mean()['max_temp']
+                    item = grouped.get_group('tmax').mean()[m]
                     newline = '{:<8.5f}          \'TMX2M({})\'\n'.format(item,
                                                                          m)
                     newfile.write(newline)
@@ -913,12 +940,9 @@ def namem_to_site_file(soil_table, site_stn_match_table, namem_precip,
         shutil.copyfile(abs_path, site_file)
         os.remove(abs_path)
 
-def worldclim_to_site_file(site_file_dir):
+def worldclim_to_site_file(wc_precip, wc_temp, site_file_dir):
     """Write Worldclim averages into existing site files."""
-    
-    wc_precip = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
-    wc_temp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
-    
+
     # I divided worldclim precip by 10 (mm to cm) by hand
     
     prec_df = pd.read_csv(wc_precip)
@@ -1034,7 +1058,7 @@ def mongolia_workflow():
     worldclim_tmin_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmin"
     worldclim_precip_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_precip"
     clipped_outer_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim"
-    bounding_aoi = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Boogie_points_bounding_aoi.shp"
+    bounding_aoi = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\monitoring_boundary.shp"
     
     # clip_rasters_arcpy(worldclim_tmax_folder,
                  # os.path.join(clipped_outer_folder, 'tmax'),
@@ -1044,39 +1068,38 @@ def mongolia_workflow():
                  # bounding_aoi, '.tif')
     # clip_rasters_arcpy(worldclim_precip_folder,
                  # os.path.join(clipped_outer_folder, 'precip'),
-                 # bounding_aoi, '.tif')
+                 # bounding_aoi, '.tif')  # TODO both tmin and tmax should go into a folder called "temp"
     
-    point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\monitoring_points.shp"
-    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_temp.csv"
-    # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), save_as,
+    point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\CBM_SCP_sites.shp"
+    wc_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\monitoring_points_temp.csv"
+    # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), wc_temp,
                            # point_shp=point_shp)
-    
-    save_as = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim\monitoring_points_precip.csv"
+    wc_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\monitoring_points_precip.csv"
     # process_worldclim_precip(os.path.join(clipped_outer_folder, 'precip'),
-                             # save_as, point_shp=point_shp)
-    soil_table = 'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/data/summaries_GK/soil_0_20_cm.csv'
-    template = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\st1.100"
-    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs"
-    # write_site_files_mongolia(template, soil_table, save_dir)
-    # worldclim_to_site_file(save_dir)
-    # make_sch_files_mongolia()
+                             # wc_precip, point_shp=point_shp)
+    # divide worldclim precip by 10.0 manually
+    soil_dir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Soilgrids_250m"
+    soil_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\monitoring_points_soil_isric_250m.csv"
+    write_soil_table(point_shp, soil_dir, soil_table)
+    template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
+    site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim"
+    write_site_files_mongolia(template_100, soil_table, site_file_dir)
+    worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
+    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_hist.sch"
+    template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.sch"
+    make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            site_file_dir)
     namem_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_precip.csv"
     namem_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_temp.csv"
-    input_folder = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
-    # namem_to_wth(namem_precip, namem_temp, input_folder)
-    site_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\CBM_SCP_combined.shp"
-    soil_dir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Soilgrids_250m"
-    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\isric_250m_soil.csv"
-    # write_soil_table(site_shp, soil_dir, save_as)
-    soil_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\isric_250m_soil.csv"
-    template = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\no_grazing\st1.100"
-    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
-    # write_site_files_mongolia(template, soil_table, save_dir)
-    # worldclim_to_site_file(save_dir)
+    site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
+    namem_to_wth(namem_precip, namem_temp, site_file_dir)
+    write_site_files_mongolia(template_100, soil_table, site_file_dir)
     site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\summaries_GK\CBM_SCP_points_nearest_soum_ctr.csv"
-    # namem_to_site_file(soil_table, site_stn_match_table, namem_precip,
-                       # namem_temp, save_dir)
-    make_sch_files_mongolia()
+    make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            site_file_dir,
+                            site_wth_match_file=site_stn_match_table)
+    worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
+    # wth_to_site_file(soil_table, site_file_dir)  # use this version if the it makes sense to use the .wth files for spin-up
 
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
