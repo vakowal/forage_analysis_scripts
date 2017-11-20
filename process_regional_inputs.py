@@ -255,7 +255,7 @@ def namem_to_wth(namem_precip, namem_temp, input_folder):
         df = df.drop('sort_col', 1)
         formats = ['%4s', '%6s'] + ['%7.2f'] * 12
         save_as = os.path.join(input_folder, '{}.wth'.format(site))
-        np.savetxt(save_as, df.values, fmt=formats, delimiter='')              
+        np.savetxt(save_as, df.values, fmt=formats, delimiter='')
                 
 def write_site_files_mongolia(template, soil_table, save_dir):
     """Write the site.100 file; inspired by previous version of this function
@@ -397,7 +397,8 @@ def make_sch_files_mongolia(soil_table, template_hist, template_sch,
             wth_stn = match_df.get_value(site, 'name_en')
             wth = '{}.wth'.format(wth_stn)
         else:
-            wth = None
+            # wth = None
+            wth = '{}.wth'.format(site)
         copy_sch_file(template_sch, site, save_as, wth_file=wth)
         save_as = os.path.join(save_dir, '{}_hist.sch'.format(site))
         copy_sch_file(template_hist, site, save_as)
@@ -992,7 +993,72 @@ def worldclim_to_site_file(wc_precip, wc_temp, site_file_dir):
                         break
         shutil.copyfile(abs_path, site_file)
         os.remove(abs_path)
+
+def CHIRPS_to_wth(soil_table, chirps_csv, wc_temp, wc_prec, save_dir):
+    """generate .wth files from a csv of precipitation data from CHIRPS,
+    filling in temperature data from worldclim.  Save them in the directory
+    save_dir."""
     
+    temp_df = pd.read_csv(wc_temp)
+    prec_df = pd.read_csv(wc_prec)
+    chirps_df = pd.read_csv(chirps_csv).set_index("site_id")
+    chirps_col = [c for c in chirps_df.columns.values.tolist() if
+                  c.startswith('chirps')] 
+    chirps_df = chirps_df[chirps_col]
+    first_month = [c for c in chirps_col if c.endswith('01')]
+    year_list = []
+    for c in chirps_col:
+        if re.search('0\.(.+?)\.', c):
+            year_list.append(re.search('0\.(.+?)\.', c).group(1))
+    year_list = list(set(year_list))
+    site_df = pd.read_csv(soil_table)
+    site_list = site_df.site_id.unique().tolist()
+    for site in site_list:
+        temp_subs = temp_df.loc[temp_df['site'] == site]
+        temp_subs = temp_subs.set_index('month')
+        prec_subs = prec_df.loc[prec_df['site'] == site]
+        prec_subs = prec_subs.set_index('month')
+        trans_dict = {m: [] for m in range(1, 13)}
+        trans_dict['label'] = []
+        trans_dict['year'] = []
+        for year in year_list:
+            trans_dict['year'].append(int(year))
+            trans_dict['label'].append('prec')
+            for mon in range(1, 13):
+                try:
+                    prec = chirps_df.loc[site,
+                                         'chirps-v2.0.{0}.{1:02}'.format(year, mon)]
+                except KeyError:
+                    prec = prec_subs.get_value(mon, 'prec')
+                trans_dict[mon].append(prec)
+            trans_dict['year'].append(int(year))
+            trans_dict['label'].append('tmin')
+            for mon in range(1, 13):
+                tmin = temp_subs.get_value(mon, 'tmin')
+                trans_dict[mon].append(tmin)
+            trans_dict['year'].append(int(year))
+            trans_dict['label'].append('tmax')
+            for mon in range(1, 13):
+                tmax = temp_subs.get_value(mon, 'tmax')
+                trans_dict[mon].append(tmax)
+        df = pd.DataFrame(trans_dict)
+        cols = df.columns.tolist()
+        cols = cols[-2:-1] + cols[-1:] + cols[:-2]
+        df = df[cols]   
+        df['sort_col'] = df['year']
+        df.loc[(df['label'] == 'prec'), 'sort_col'] = df.sort_col + 0.1
+        df.loc[(df['label'] == 'tmin'), 'sort_col'] = df.sort_col + 0.2
+        df.loc[(df['label'] == 'tmax'), 'sort_col'] = df.sort_col + 0.3
+        df = df.sort_values(by='sort_col')
+        df = df.drop('sort_col', 1)        
+        formats = ['%4s', '%6s'] + ['%7.2f'] * 12
+        save_as = os.path.join(save_dir, '{}.wth'.format(site))
+        np.savetxt(save_as, df.values, fmt=formats, delimiter='')
+    
+def wth_from_GPM():
+    """generate .wth files from a csv of data from CHIRPS."""
+
+
 def laikipia_regional_properties_workflow():
     """Nasty list of datasets and functions performed to process inputs for
     regional properties in Laikipia"""
@@ -1031,25 +1097,7 @@ def laikipia_regional_properties_workflow():
     # remove_grazing(input_dir, out_dir)
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\regional_average_temp_centroid.csv"
     # calculate_total_annual_precip(worldclim_precip_folder, zonal_shp, save_as)
-    
-def canete_regular_grid_workflow():
-    """Generate inputs to run CENTURY on a regular grid covering the
-    intervention area in the Canete basin, Peru"""
-    
-    points_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\CGIAR\Peru\climate_and_soil\worldclim_point_intervention_area.shp" # points at which to run the sim
-    soil_table = calc_soil_table(points_shp, r"C:\Users\Ginger\Desktop\Soil_avg.csv")
-    soil_table = r"C:\Users\Ginger\Desktop\Soil_avg.csv"
-    # join_site_lat_long(zonal_shp, soil_table)
-    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
-    template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\Golf_10.100"
-    # write_site_files(template_100, soil_table, save_dir)
-    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0_hist.sch"
-    template_extend = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\0.sch"
-    # make_sch_files(template_hist, template_extend, soil_table, save_dir)
-    FEWS_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE"
-    clipped_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_clipped"
-    aoi_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\Laikipia_soil_clip_prj.shp"
-    
+ 
 def mongolia_workflow():
     """Generate climate inputs to run the model at Boogie's monitoring points
     for sustainable cashmere."""
@@ -1080,27 +1128,36 @@ def mongolia_workflow():
     # divide worldclim precip by 10.0 manually
     soil_dir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Soilgrids_250m"
     soil_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\monitoring_points_soil_isric_250m.csv"
-    write_soil_table(point_shp, soil_dir, soil_table)
+    # write_soil_table(point_shp, soil_dir, soil_table)
     template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
     site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim"
-    write_site_files_mongolia(template_100, soil_table, site_file_dir)
-    worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
+    # write_site_files_mongolia(template_100, soil_table, site_file_dir)
+    # worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
     template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_hist.sch"
     template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.sch"
-    make_sch_files_mongolia(soil_table, template_hist, template_sch,
-                            site_file_dir)
+    # make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            # site_file_dir)
     namem_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_precip.csv"
     namem_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM_temp.csv"
     site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim"
-    namem_to_wth(namem_precip, namem_temp, site_file_dir)
-    write_site_files_mongolia(template_100, soil_table, site_file_dir)
+    # namem_to_wth(namem_precip, namem_temp, site_file_dir)
+    # write_site_files_mongolia(template_100, soil_table, site_file_dir)
     site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\summaries_GK\CBM_SCP_points_nearest_soum_ctr.csv"
-    make_sch_files_mongolia(soil_table, template_hist, template_sch,
-                            site_file_dir,
-                            site_wth_match_file=site_stn_match_table)
-    worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
+    # make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            # site_file_dir,
+                            # site_wth_match_file=site_stn_match_table)
+    # worldclim_to_site_file(wc_precip, wc_temp, site_file_dir)
     # wth_to_site_file(soil_table, site_file_dir)  # use this version if the it makes sense to use the .wth files for spin-up
-
+    chirps_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\CHIRPS\precip_data_per_point.csv"
+    save_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\chirps_prec"
+    # CHIRPS_to_wth(soil_table, chirps_csv, wc_temp, wc_precip, save_dir)
+    # copy site.100 files manually from namem_clim to chirps_prec
+    template_hist = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_hist.sch"
+    template_sch = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.sch"
+    make_sch_files_mongolia(soil_table, template_hist, template_sch,
+                            save_dir)
+    wth_to_site_file(soil_table, save_dir)
+    
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
     
