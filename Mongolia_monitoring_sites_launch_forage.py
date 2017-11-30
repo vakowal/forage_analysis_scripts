@@ -50,18 +50,22 @@ def edit_grass_csv(grass_csv, label):
     df = pd.read_csv(grass_csv)
     df = df.set_index(['index'])
     assert len(df) == 1, "We can only handle one grass type"
-    df[['label']] = df[['label']].astype(type(label))
     df.set_value(0, 'label', label)
+    df[['label']] = df[['label']].astype(type(label))
     df.to_csv(grass_csv)
     
 def run_zero_sd(site_csv):
     """Run the model without animals to compare simulated biomass to Boogie's
     biomass as a first step."""
-    
-    run_dict = {'worldclim': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim",
-                              r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\worldclim\zero_sd"],
-                'namem': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim",
-                          r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\namem_clim\zero_sd"]}
+    # 'worldclim': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim",
+                              # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\worldclim\zero_sd"],
+                              
+    # run_dict = {'namem': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim",
+                          # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\namem_clim\zero_sd"],
+                # 'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\chirps_prec",
+                           # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\chirps_prec\zero_sd"]}
+    run_dict = {'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\CHIRPS_pixels\chirps_prec",
+                           r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels\chirps_prec\zero_sd"]}
     forage_args = default_forage_args()
     modify_stocking_density(forage_args['herbivore_csv'], 0)
     site_list = pd.read_csv(site_csv).to_dict(orient='records')
@@ -71,9 +75,9 @@ def run_zero_sd(site_csv):
         for site in site_list:
             forage_args['latitude'] = site['latitude']
             forage_args['outdir'] = os.path.join(outer_outdir,
-                                                 '{}'.format(site['site_id']))
+                                                 '{}'.format(int(site['site_id'])))
             if not os.path.exists(forage_args['outdir']):
-                edit_grass_csv(forage_args['grass_csv'], site['site_id'])
+                edit_grass_csv(forage_args['grass_csv'], int(site['site_id']))
                 forage.execute(forage_args)
         
 def run_avg_sd(site_csv):
@@ -97,7 +101,7 @@ def run_avg_sd(site_csv):
         for site in site_list:
             forage_args['latitude'] = site['latitude']
             forage_args['outdir'] = os.path.join(outer_outdir,
-                                                 '{}'.format(site['site_id']))
+                                                 '{}'.format(int(site['site_id'])))
             if not os.path.exists(forage_args['outdir']):
                 edit_grass_csv(forage_args['grass_csv'], site['site_id'])
                 forage.execute(forage_args)
@@ -142,15 +146,8 @@ def erase_intermediate_files(outerdir):
             continue
 
 def clean_up():
-    run_dict = {'worldclim': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim",
-                              r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\worldclim\zero_sd"],
-                'namem': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim",
-                          r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\namem_clim\zero_sd"], 
-                'worldclim2': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim",
-                              r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\worldclim\average_sd"],
-                'namem2': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\namem_clim",
-                          r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\namem_clim\average_sd"]}
-    
+    run_dict = {'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\CHIRPS_pixels\chirps_prec",
+                           r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels\chirps_prec\zero_sd"]}    
     for precip_source in run_dict.keys():
         outer_outdir = run_dict[precip_source][1]
         erase_intermediate_files(outer_outdir)
@@ -160,10 +157,10 @@ def summarize_biomass(save_as):
     biomass."""
     
     df_list = []
-    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results"
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels"
     columns = ['green_biomass_gm2', 'dead_biomass_gm2', 'total_biomass_gm2',
                'year', 'month']
-    for precip_source in ['worldclim', 'namem_clim']:
+    for precip_source in ['chirps_prec']:  # 'namem_clim', 'worldclim', 
         for sd in ['zero_sd']:  # , 'average_sd']
             results_dir = os.path.join(outerdir, precip_source, sd)
             for folder in os.listdir(results_dir):
@@ -185,12 +182,13 @@ def summarize_biomass(save_as):
 
 if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites_median_grass_forb_biomass.csv"
-    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\monitoring_points_soil_isric_250m.csv"
-    # run_zero_sd(site_csv)
+    # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\soum_ctr_soil_isric_250m.csv"  # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\SCP_monitoring_points_soil_isric_250m.csv"
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m_SUBSET.csv"
+    run_zero_sd(site_csv)
     # run_avg_sd(site_csv)
     # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd/biomass_summary.csv'
     # compare_biomass(site_csv, save_as)
     # clean_up()
-    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/biomass_summary_zero_sd_worldclim_namem.csv'
+    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/biomass_summary_zero_sd_chirps_GCD_G.csv'
     summarize_biomass(save_as)
     
