@@ -16,7 +16,7 @@ sys.path.extend(
  [r'C:\Users\Ginger\Documents\Python\rangeland_production',
   r'C:\Users\Ginger\Documents\Python\ginger-precip-raster-sample'])
 import forage_century_link_utils as cent
-import raster_to_point_vector as rtp
+# import raster_to_point_vector as rtp
 import arcpy
 
 arcpy.CheckOutExtension("Spatial")
@@ -201,6 +201,40 @@ def write_soil_table(site_shp, soil_dir, save_as):
             soil_df = soil_df.set_value([row[0]], 'latitude', row[2])
     soil_df.to_csv(save_as)
 
+def count_missing_values_namem(namem_precip, namem_temp):
+    """How many missing values in NAMEM data for each soum center?"""
+    
+    temp_df = pd.read_csv(namem_temp)
+    prec_df = pd.read_csv(namem_precip)
+    namem_df = pd.merge(prec_df, temp_df, how='outer')
+    namem_df[['year', 'month']] = namem_df[['year', 'month']].astype(int)
+    year_list = namem_df['year'].unique().tolist()
+    year_list = range(min(year_list), max(year_list) + 1)
+    missing_dict = {'site': [], 'missing_precip_mm': [],
+                    'missing_min_temp': [], 'missing_max_temp': []}
+    for site in namem_df.station_name.unique():
+        missing_dict['site'].append(site)
+        sub_df = namem_df.loc[(namem_df["station_name"] == site)]
+        # replace missing values with average value for each month
+        for year in year_list:
+            if year == 2017:
+                month_list = range(1, 7)
+            else:
+                month_list = range(1, 13)
+            for month in month_list:
+                test_df = sub_df.loc[(sub_df['month'] == month) &
+                                     (sub_df['year'] == year)]
+                if len(test_df) == 0:
+                    placeholder = pd.DataFrame({'month': [month],
+                                                'year': [year]})
+                    sub_df = pd.concat([sub_df, placeholder])
+        for label in ['min_temp', 'max_temp', 'precip_mm']:
+            missing_count = len(sub_df.loc[sub_df[label].isnull(), label])
+            missing_dict['missing_{}'.format(label)].append(missing_count)
+    df = pd.DataFrame(missing_dict)
+    save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\missing_records.csv"
+    df.to_csv(save_as)
+    
 def namem_to_wth(namem_precip, namem_temp, input_folder):
     """Write weather files from namem records."""
     
@@ -1119,7 +1153,7 @@ def mongolia_workflow():
                  # bounding_aoi, '.tif')  # TODO both tmin and tmax should go into a folder called "temp"
     
     # point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\CBM_SCP_sites.shp"
-    point_shp = "C:/Users/Ginger/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_monitoring_soums.shp"
+    point_shp = "C:/Users/Ginger/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_2_soums.shp"
     wc_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\CHIRPS_pixels_temp.csv"
     # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), wc_temp,
                            # point_shp=point_shp)
@@ -1128,8 +1162,8 @@ def mongolia_workflow():
                              # wc_precip, point_shp=point_shp)
     ### divide worldclim precip by 10.0 manually ###
     soil_dir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Soilgrids_250m"
-    soil_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m.csv"
-    write_soil_table(point_shp, soil_dir, soil_table)
+    soil_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m_2_soums.csv"
+    # write_soil_table(point_shp, soil_dir, soil_table)
     template_100 = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
     # site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\Worldclim"
     # write_site_files_mongolia(template_100, soil_table, site_file_dir)
@@ -1144,7 +1178,7 @@ def mongolia_workflow():
     # namem_to_wth(namem_precip, namem_temp, site_file_dir)
     # write_site_files_mongolia(template_100, soil_table, site_file_dir)
     # site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\summaries_GK\CBM_SCP_points_nearest_soum_ctr.csv"
-    site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\soum_ctr_match_table.csv"
+    # site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\soum_ctr_match_table.csv"
     # make_sch_files_mongolia(soil_table, template_hist, template_sch,
                             # site_file_dir,
                             # site_wth_match_file=site_stn_match_table)
@@ -1160,10 +1194,10 @@ def mongolia_workflow():
     # EO_to_wth(soil_table, chirps_csv, year_reg, col_format, wc_temp, wc_precip,
               # conversion_factor, save_dir)
     # copy site.100 files manually from namem_clim to chirps_prec OR
-    write_site_files_mongolia(template_100, soil_table, save_dir)
+    # write_site_files_mongolia(template_100, soil_table, save_dir)
     # make_sch_files_mongolia(soil_table, template_hist, template_sch,
                             # save_dir)
-    wth_to_site_file(soil_table, save_dir)
+    # wth_to_site_file(soil_table, save_dir)
     ## generate .wth inputs from GPM
     GPM_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\GPM\precip_data_per_point.csv"
     year_reg = 'IMERG\.([0-9]{4})0'
@@ -1175,7 +1209,8 @@ def mongolia_workflow():
     raster_source = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\CHIRPS\chirps-v2.0.1998.01_ex.tif"
     point_destination = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\CHIRPS_pixel_centroid.shp"
     # rtp.raster_to_point_vector(raster_source, point_destination)  
-            
+     
+    count_missing_values_namem(namem_precip, namem_temp)
     
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
