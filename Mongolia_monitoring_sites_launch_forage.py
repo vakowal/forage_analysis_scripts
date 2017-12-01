@@ -76,10 +76,11 @@ def run_zero_sd(site_csv):
             forage_args['latitude'] = site['latitude']
             forage_args['outdir'] = os.path.join(outer_outdir,
                                                  '{}'.format(int(site['site_id'])))
-            if not os.path.exists(forage_args['outdir']):
+            if not os.path.isfile(os.path.join(forage_args['outdir'],
+                                               'summary_results.csv')):
                 edit_grass_csv(forage_args['grass_csv'], int(site['site_id']))
                 forage.execute(forage_args)
-        
+                
 def run_avg_sd(site_csv):
     """Run the model with average animal density."""
     
@@ -152,10 +153,11 @@ def clean_up():
         outer_outdir = run_dict[precip_source][1]
         erase_intermediate_files(outer_outdir)
 
-def summarize_biomass(save_as):
+def summarize_biomass(site_csv, save_as):
     """Make a table of simulated biomass that can be compared to empirical
     biomass."""
     
+    site_list = pd.read_csv(site_csv).to_dict(orient='records')
     df_list = []
     outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels"
     columns = ['green_biomass_gm2', 'dead_biomass_gm2', 'total_biomass_gm2',
@@ -163,19 +165,20 @@ def summarize_biomass(save_as):
     for precip_source in ['chirps_prec']:  # 'namem_clim', 'worldclim', 
         for sd in ['zero_sd']:  # , 'average_sd']
             results_dir = os.path.join(outerdir, precip_source, sd)
-            for folder in os.listdir(results_dir):
-                site = os.path.basename(folder)
-                sum_df = pd.read_csv(os.path.join(results_dir, folder,
-                                                  'summary_results.csv'))
+            for site in site_list:
+                site_id = int(site['site_id'])
+                sum_csv = os.path.join(results_dir, '{}'.format(site_id),
+                                      'summary_results.csv')
+                sum_df = pd.read_csv(sum_csv)
                 sum_df = sum_df.set_index('step')
                 subset = sum_df.loc[sum_df['month'].isin([7, 8, 9])]
-                subset['green_biomass_gm2'] = subset['{}_green_kgha'.format(site)] / 10.
-                subset['dead_biomass_gm2'] = subset['{}_dead_kgha'.format(site)] / 10.
+                subset['green_biomass_gm2'] = subset['{}_green_kgha'.format(site_id)] / 10.
+                subset['dead_biomass_gm2'] = subset['{}_dead_kgha'.format(site_id)] / 10.
                 subset['total_biomass_gm2'] = subset['green_biomass_gm2'] + subset['dead_biomass_gm2']
                 subset = subset[columns]
                 subset['climate_source'] = precip_source
                 subset['stocking_density_option'] = sd
-                subset['site_id'] = site
+                subset['site_id'] = site_id
                 df_list.append(subset)
     sum_df = pd.concat(df_list)
     sum_df.to_csv(save_as)
@@ -183,12 +186,12 @@ def summarize_biomass(save_as):
 if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites_median_grass_forb_biomass.csv"
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\soum_ctr_soil_isric_250m.csv"  # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\SCP_monitoring_points_soil_isric_250m.csv"
-    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m_SUBSET.csv"
-    run_zero_sd(site_csv)
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m_2_soums.csv"
+    # run_zero_sd(site_csv)
     # run_avg_sd(site_csv)
     # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd/biomass_summary.csv'
     # compare_biomass(site_csv, save_as)
     # clean_up()
     save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/biomass_summary_zero_sd_chirps_GCD_G.csv'
-    summarize_biomass(save_as)
+    summarize_biomass(site_csv, save_as)
     
