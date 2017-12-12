@@ -235,11 +235,23 @@ def count_missing_values_namem(namem_precip, namem_temp):
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\missing_records.csv"
     df.to_csv(save_as)
     
-def namem_to_wth(namem_precip, namem_temp, input_folder):
-    """Write weather files from namem records."""
+def namem_to_wth(namem_precip, namem_temp, input_folder, wc_temp=None,
+                 site_match_csv=None):
+    """Write weather files from namem records.  If worldclim temp is included,
+    get temperature records from worldclim."""
     
     temp_df = pd.read_csv(namem_temp)
     prec_df = pd.read_csv(namem_precip)
+    if wc_temp:
+        assert site_match_csv, "Must have site_match_csv if wc_temp is used"
+        wc_temp_df = pd.read_csv(wc_temp)
+        match_df = pd.read_csv(site_match_csv)
+        wc_temp_df = pd.merge(wc_temp_df, match_df, left_on='site',
+                              right_on='site_id', how='outer')
+        wc_temp_df[['station_name']] = wc_temp_df[['name_en']]
+        wc_temp_df['year'] = 2010  # hack
+        temp_df = wc_temp_df[['station_name', 'month', 'year', 'tmax',
+                              'tmin']]
     namem_df = pd.merge(prec_df, temp_df, how='outer')
     namem_df[['year', 'month']] = namem_df[['year', 'month']].astype(int)
     year_list = namem_df['year'].unique().tolist()
@@ -258,7 +270,7 @@ def namem_to_wth(namem_precip, namem_temp, input_folder):
                                                 'year': [year]})
                     sub_df = pd.concat([sub_df, placeholder])
         for mon in range(1, 13):
-            for label in ['min_temp', 'max_temp', 'precip_mm']:
+            for label in ['tmin', 'tmax', 'precip_mm']:
                 fill_val = grouped.get_group(mon).mean()[label]
                 sub_df.loc[(sub_df['month'] == mon) &
                            (sub_df[label].isnull()), label] = fill_val
@@ -269,10 +281,10 @@ def namem_to_wth(namem_precip, namem_temp, input_folder):
             if len(prec) != len(year_list):
                 import pdb; pdb.set_trace()
             trans_dict[mon] = [v / 10.0 for v in prec]  # namem vals in mm
-            tmin = sub_df.loc[(sub_df['month'] == mon), 'min_temp'].values.tolist()
+            tmin = sub_df.loc[(sub_df['month'] == mon), 'tmin'].values.tolist()
             if len(tmin) != len(year_list):
                 import pdb; pdb.set_trace()
-            tmax = sub_df.loc[(sub_df['month'] == mon), 'max_temp'].values.tolist()
+            tmax = sub_df.loc[(sub_df['month'] == mon), 'tmax'].values.tolist()
             if len(tmax) != len(year_list):
                 import pdb; pdb.set_trace()
             trans_dict[mon].extend(tmin)
@@ -1154,7 +1166,7 @@ def mongolia_workflow():
     
     # point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\CBM_SCP_sites.shp"
     point_shp = "C:/Users/Ginger/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_2_soums.shp"
-    wc_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\CHIRPS_pixels_temp.csv"
+    wc_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\soum_ctrs_temp.csv"
     # process_worldclim_temp(os.path.join(clipped_outer_folder, 'temp'), wc_temp,
                            # point_shp=point_shp)
     wc_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\CHIRPS_pixels_precip.csv"
@@ -1174,8 +1186,11 @@ def mongolia_workflow():
                             # site_file_dir)
     namem_precip = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\NAMEM_precip.csv"
     namem_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\NAMEM_temp.csv"
-    site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim"
-    # namem_to_wth(namem_precip, namem_temp, site_file_dir)
+    # site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim"
+    site_file_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim_wc_temp"
+    site_match_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\soum_ctr_match_table.csv"
+    namem_to_wth(namem_precip, namem_temp, site_file_dir, wc_temp=wc_temp,
+                 site_match_csv=site_match_csv)
     # write_site_files_mongolia(template_100, soil_table, site_file_dir)
     # site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\summaries_GK\CBM_SCP_points_nearest_soum_ctr.csv"
     # site_stn_match_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\soum_ctr_match_table.csv"
@@ -1210,7 +1225,7 @@ def mongolia_workflow():
     point_destination = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\CHIRPS_pixel_centroid.shp"
     # rtp.raster_to_point_vector(raster_source, point_destination)  
      
-    count_missing_values_namem(namem_precip, namem_temp)
+    # count_missing_values_namem(namem_precip, namem_temp)
     
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
