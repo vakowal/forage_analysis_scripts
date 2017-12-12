@@ -183,15 +183,53 @@ def summarize_biomass(site_csv, save_as):
     sum_df = pd.concat(df_list)
     sum_df.to_csv(save_as)
 
+def calc_variability(site_csv, save_as):
+    """Collect minimum and maximum predicted forage for each site"""
+    
+    site_list = pd.read_csv(site_csv).to_dict(orient='records')
+    df_list = []
+    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels"
+    sum_dict = {'site_id': [], 'min_biomass': [], 'max_biomass': []}
+    for precip_source in ['chirps_prec']:  # 'namem_clim', 'worldclim', 
+        for sd in ['zero_sd']:  # , 'average_sd']
+            results_dir = os.path.join(outerdir, precip_source, sd)
+            for site in site_list:
+                site_id = int(site['site_id'])
+                sum_csv = os.path.join(results_dir, '{}'.format(site_id),
+                                      'summary_results.csv')
+                sum_df = pd.read_csv(sum_csv)
+                sum_df = sum_df.set_index('step')
+                biomass = sum_df['{}_green_kgha'.format(site_id)] + \
+                                         sum_df['{}_dead_kgha'.format(site_id)]
+                min_biom = min(biomass)
+                max_biom = max(biomass)
+                sum_dict['site_id'].append(site_id)
+                sum_dict['min_biomass'].append(min_biom)
+                sum_dict['max_biomass'].append(max_biom)
+    sum_df = pd.DataFrame(sum_dict)
+    sum_df.to_csv(save_as)
+
+def back_calc(site_csv):
+    """Back calculate management with inputs from NAMEM and CHIRPS."""
+    
+    site_df = pd.read_csv(site_csv)
+    for site in site_df.site_id.unique():
+        sub_df = site_df.loc[site_df.site_id == site]
+        assert len(sub_df) < 2, "must be only one site record to match"
+        site_dict = {'name': site, }
+        
 if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites_median_grass_forb_biomass.csv"
-    # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\soum_ctr_soil_isric_250m.csv"  # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\SCP_monitoring_points_soil_isric_250m.csv"
-    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m_2_soums.csv"
+    site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\soum_ctr_soil_isric_250m.csv"  # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\SCP_monitoring_points_soil_isric_250m.csv"
+    # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\soil\CHIRPS_pixels_soil_isric_250m.csv"
     # run_zero_sd(site_csv)
     # run_avg_sd(site_csv)
     # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd/biomass_summary.csv'
     # compare_biomass(site_csv, save_as)
-    # clean_up()
-    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/biomass_summary_zero_sd_chirps_GCD_G.csv'
-    summarize_biomass(site_csv, save_as)
+    clean_up()
+    # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/biomass_summary_zero_sd_chirps_GCD_G.csv'
+    # summarize_biomass(site_csv, save_as)
+    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/min_max_biomass.csv'
+    # calc_variability(site_csv, save_as)
+    back_calc(site_csv)
     
