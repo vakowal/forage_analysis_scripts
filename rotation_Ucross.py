@@ -360,6 +360,101 @@ def collect_results():
     rest_result_df = pd.concat(df_list)
     rest_result_df.to_csv(save_as)
 
+def calc_equivalent_intake():
+    """Calculate the approximately equivalent amount of one feed type that
+    would need to be eaten to replace another. For example, how much hay would
+    be nutritionally equivalent to a given amount of forage, in terms of
+    liveweight gain?"""
+    
+    def calc_liveweight(site, herb_class, available_forage):
+        supp_available = 0
+        DOY = 150
+        prop_legume = 0
+        herb_class.calc_distance_walked(site.S, herb_class.stocking_density,
+                                        available_forage)
+        max_intake = herb_class.calc_max_intake()
+        ZF = herb_class.calc_ZF()
+        HR = forage_u.calc_relative_height(available_forage)
+        diet = forage_u.diet_selection_t2(ZF, HR, prop_legume, supp_available, 
+                                          max_intake, herb_class.FParam,
+                                          available_forage)
+        diet_interm = forage_u.calc_diet_intermediates(diet, herb_class,
+                                                       prop_legume, DOY, site)
+        reduced_max_intake = forage_u.check_max_intake(diet, diet_interm,
+                                                       herb_class, max_intake)
+        if reduced_max_intake < max_intake:
+            diet = forage_u.diet_selection_t2(ZF, HR, prop_legume,
+                                              supp_available, 
+                                              reduced_max_intake,
+                                              herb_class.FParam,
+                                              available_forage)
+            diet_interm = forage_u.calc_diet_intermediates(diet, herb_class,
+                                                           prop_legume, DOY,
+                                                           site)
+        delta_W = forage_u.calc_delta_weight(diet_interm, herb_class)
+        return delta_W
+    
+    grass_gm2 = 87.  # does it matter?
+    forage_args = default_forage_args()
+    site = forage_u.SiteInfo(1., 44.6)
+    grass_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_inputs\Ucross\grass_high_quality_only.csv"
+    hay_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_inputs\Ucross\Merlin_hay.csv" 
+    herb_csv = forage_args['herbivore_csv']
+    h_class = (pd.read_csv(forage_args[u'herbivore_csv'])).to_dict(
+                                                           orient='records')[0]
+    herd = forage_u.HerbivoreClass(h_class)
+    herd.update()
+    
+    # get liveweight from grass
+    grass_list = (pd.read_csv(grass_csv)).to_dict(orient='records')
+    for grass in grass_list:
+        grass['green_gm2'] = grass_gm2
+        grass['dead_gm2'] = grass_gm2 * 0.5
+    available_forage = forage_u.calc_feed_types(grass_list)
+    for feed_type in available_forage:
+        feed_type.calc_digestibility_from_protein(
+                                             forage_args['digestibility_flag'])
+    grass_liveweight = calc_liveweight(site, herd, available_forage)
+    
+    # try n times to match liveweight with hay, given a tolerance, and changing
+    # the amount of hay supplied
+    hay_list = (pd.read_csv(hay_csv)).to_dict(orient='records')
+    tolerance = 10.
+    hay_liveweight = 0
+    upper_bound = grass_gm2 * 2.
+    lower_bound = grass_gm2 / 2.
+    n = 1
+    while n < 15:
+        for hay in hay_list:
+            hay['green_gm2'] = upper_bound
+            hay['dead_gm2'] = upper_bound * 0.5
+        available_forage = forage_u.calc_feed_types(hay_list)
+        for feed_type in available_forage:
+            feed_type.calc_digestibility_from_protein(
+                                             forage_args['digestibility_flag'])
+        hay_upper_lw = calc_liveweight(site, herd, available_forage)
+        if (grass_liveweight - hay_upper_lw) > tolerance:
+            raise Exception, "upper bound hay gm2 is too low"
+        for hay in hay_list:
+            hay['green_gm2'] = lower_bound
+            hay['dead_gm2'] = lower_bound * 0.5
+        available_forage = forage_u.calc_feed_types(hay_list)
+        for feed_type in available_forage:
+            feed_type.calc_digestibility_from_protein(
+                                             forage_args['digestibility_flag'])
+        hay_lower_lw = calc_liveweight(site, herd, available_forage)
+        if (hay_lower_lw - grass_liveweight) > tolerance:
+            raise Exception, "lower bound hay gm2 is too high"
+        if (hay_upper_lw - grass_liveweight) > (grass_liveweight - hay_lower_lw):
+            upper_bound = lower_bound + ((upper_bound - lower_bound) / 2.)
+        else:
+            lower_bound = lower_bound + ((upper_bound - lower_bound) / 2.)
+        n = n + 1
+    print "Hay biomass: between {} and {}".format(lower_bound, upper_bound)
+    print """liveweight gain: {0:.3f} (grass), {0:.3f} (hay upper bound),
+            {0:.3f} (hay lower bound)""".format(grass_liveweight, hay_upper_lw,
+                                              hay_lower_lw)
+    
 def erase_intermediate_files(outerdir):
     for folder in os.listdir(outerdir):
         try:
