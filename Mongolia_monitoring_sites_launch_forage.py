@@ -7,7 +7,7 @@ import pandas as pd
 sys.path.append(
     "C:/Users/Ginger/Documents/Python/rangeland_production")
 import forage
-
+import back_calculate_management as backcalc
 
 def default_forage_args():
     """Default args to run the forage model in Mongolia."""
@@ -64,8 +64,11 @@ def run_zero_sd(site_csv):
                           # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\namem_clim\zero_sd"],
                 # 'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\chirps_prec",
                            # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\chirps_prec\zero_sd"]}
-    run_dict = {'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\CHIRPS_pixels\chirps_prec",
-                           r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels\chirps_prec\zero_sd"]}
+    # run_dict = {'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\CHIRPS_pixels\chirps_prec",
+                           # r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels\chirps_prec\zero_sd"]}
+    run_dict = {'namem': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim_wc_temp",
+                          r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\namem_clim_wc_temp\zero_sd"]}
+    
     forage_args = default_forage_args()
     modify_stocking_density(forage_args['herbivore_csv'], 0)
     site_list = pd.read_csv(site_csv).to_dict(orient='records')
@@ -147,8 +150,8 @@ def erase_intermediate_files(outerdir):
             continue
 
 def clean_up():
-    run_dict = {'chirps': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\CHIRPS_pixels\chirps_prec",
-                           r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\CHIRPS_pixels\chirps_prec\zero_sd"]}    
+    run_dict = {'namem': [r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\soum_centers\namem_clim_wc_temp",
+                          r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\soum_centers\namem_clim_wc_temp\zero_sd"]}
     for precip_source in run_dict.keys():
         outer_outdir = run_dict[precip_source][1]
         erase_intermediate_files(outer_outdir)
