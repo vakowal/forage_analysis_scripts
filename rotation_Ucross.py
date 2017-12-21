@@ -36,7 +36,7 @@ def default_forage_args():
             'user_define_protein': 1,
             'user_define_digestibility': 0,
             'herbivore_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/cattle.csv",
-            'grass_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass.csv",
+            'grass_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass_high_quality_only.csv",
             'digestibility_flag': 'Konza',
             'restart_monthly': 1,
             }
@@ -230,27 +230,34 @@ def stocking_dens_test_wrapper(outer_outdir):
     """Calculate difference in pasture and animal gain metrics between rotation
     and continuous grazing, at a range of total stocking densities."""
     
-    # from Ortega-S et al 2013
-    # n_pastures = 8
-    total_area_ha = 48.56
-    # num_animals = 14
+    # from Todd Graham's report
+    total_area_ha = 688
+    # num_animals = 350
+    remove_months = [1, 2, 3, 11, 12]
     
     result_dict = {'num_animals': [], 'num_pastures': [], 'gain_%_diff': [],
                    'pasture_%_diff': []}
-    for num_animals in [14, 21]:
-        for n_pastures in[6, 8, 10, 12, 14]:
+    for num_animals in [200, 350, 500]:
+        for n_pastures in[2, 4, 6, 8, 10]:
             cont_dir = os.path.join(outer_outdir,
                                     'cont_{}_animals'.format(num_animals))
             if not os.path.exists(os.path.join(cont_dir,
                                                'summary_results.csv')):
-                control(num_animals, total_area_ha, cont_dir)
+                try:
+                    control(num_animals, total_area_ha, cont_dir,
+                            remove_months)
+                except:
+                    continue
             rot_dir = os.path.join(outer_outdir,
                                    'blind_rot_{}_animals_{}_pastures'.format(
                                    num_animals, n_pastures))
             if not os.path.exists(os.path.join(rot_dir,
                                                'pasture_summary.csv')):
-                blind_treatment(num_animals, total_area_ha, n_pastures,
-                                rot_dir)
+                try:
+                    blind_treatment(num_animals, total_area_ha, n_pastures,
+                                    rot_dir, remove_months)
+                except:
+                    continue
             gain_diff, pasture_diff = rotation.calc_productivity_metrics(
                                                              cont_dir, rot_dir)
             result_dict['num_animals'].append(num_animals)
@@ -258,7 +265,8 @@ def stocking_dens_test_wrapper(outer_outdir):
             result_dict['gain_%_diff'].append(gain_diff)
             result_dict['pasture_%_diff'].append(pasture_diff)
     result_df = pd.DataFrame(result_dict)
-    result_df.to_csv(os.path.join(outer_outdir, 'summary.csv'))
+    result_df.to_csv(os.path.join(outer_outdir,
+                                  'stocking_density_test_summary.csv'))
 
 def zero_sd():
     """Run zero stocking density to get forage production right."""
