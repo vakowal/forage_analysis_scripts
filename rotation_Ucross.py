@@ -36,7 +36,7 @@ def default_forage_args():
             'user_define_protein': 1,
             'user_define_digestibility': 0,
             'herbivore_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/cattle.csv",
-            'grass_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass_high_quality_only.csv",
+            'grass_csv': r"C:/Users/Ginger/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass.csv",
             'digestibility_flag': 'Konza',
             'restart_monthly': 1,
             }
@@ -67,26 +67,28 @@ def composition_wrapper():
     benefit of rotation as mediated by changes in pasture composition."""
     
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross"
-    comp_filename = os.path.join(outer_outdir, 'proportion_summary_0_anim.csv')
-    bene_filename = os.path.join(outer_outdir, 'benefit_rot_36_mo.csv')
+    comp_filename = os.path.join(outer_outdir, 'proportion_summary_10_130_250_anim.csv')
+    # bene_filename = os.path.join(outer_outdir, 'benefit_rot_36_mo.csv')
     high_cp_label = 'high_quality'
     low_cp_label = 'low_quality'
     
     # fixed
-    num_animals = 0 # original from Ucross description: 350
+    # num_animals = 10 # original from Ucross description: 350
     total_area_ha = 688
     cp_mean = 0.1545
-    cp_ratio_list = [1, 1.2] # , 1.2]
+    cp_ratio_list = [1.2]  # [1, 1.2] # , 1.2]
+    high_quality_perc = 0.5
     
     # vary
     n_pasture_list = [3]  # , 4]
-    high_quality_perc_list = [0.5]  # , 0.2]  # , 0.4, 0.5, 0.6]
-
+    # high_quality_perc_list = [0.5]  # , 0.2]  # , 0.4, 0.5, 0.6]
+    num_animals_list = [10, 130, 250]
+    
     df_list = []
-    result_dict = {'n_pastures': [], 'high_quality_perc': [],
+    result_dict = {'n_pastures': [], 'num_animals': [],
                    'cp_ratio': [], 'gain_%_diff': []}
     remove_months = [1, 2, 3, 11, 12]
-    for high_quality_perc in high_quality_perc_list:
+    for num_animals in num_animals_list:  # high_quality_perc in high_quality_perc_list:
         for cp_ratio in cp_ratio_list:
             low_quality_cp = (2. * cp_mean) / (cp_ratio + 1.)
             high_quality_cp = float(cp_ratio) * low_quality_cp
@@ -95,32 +97,28 @@ def composition_wrapper():
                            low_quality_cp, high_quality_perc, high_cp_label,
                            low_cp_label)
             cont_dir = os.path.join(outer_outdir,
-                                    'control_{}_v_{}_perc_{}'.format(
-                                    high_quality_perc, (1-high_quality_perc),
-                                    cp_ratio))
-            # if not os.path.exists(os.path.join(cont_dir,
-                                  # 'summary_results.csv')):
-            control(num_animals, total_area_ha, cont_dir, remove_months)
+                                    'control_{}_anim_perc_{}'.format(
+                                    num_animals, cp_ratio))
+            if not os.path.exists(os.path.join(cont_dir,
+                                  'summary_results.csv')):
+                control(num_animals, total_area_ha, cont_dir, remove_months)
             for n_pastures in n_pasture_list:
                 rot_dir = os.path.join(outer_outdir,
-                                      'rot_{}_pastures_{}_v_{}_perc_{}'.format(
-                                         n_pastures, high_quality_perc,
-                                         (1-high_quality_perc),
-                                         cp_ratio))
-                # if not os.path.exists(os.path.join(rot_dir,
-                                      # 'pasture_summary.csv')):
-                blind_treatment(num_animals, total_area_ha, n_pastures,
-                                rot_dir, remove_months)
+                                      'rot_{}_pastures_{}_anim_perc_{}'.format(
+                                         n_pastures, num_animals, cp_ratio))
+                if not os.path.exists(os.path.join(rot_dir,
+                                      'pasture_summary.csv')):
+                    blind_treatment(num_animals, total_area_ha, n_pastures,
+                                    rot_dir, remove_months)
                 diff_df = proportion_high_quality(cont_dir, rot_dir)
                 diff_df['n_pastures'] = [n_pastures] * len(diff_df.index)
-                diff_df['high_quality_perc'] = [high_quality_perc] * len(
-                                                                     diff_df.index)
+                diff_df['num_animals'] = [num_animals] * len(diff_df.index)
                 diff_df['cp_ratio'] = [cp_ratio] * len(diff_df.index)
                 df_list.append(diff_df)
                 # gain_diff, pasture_diff = rotation.calc_productivity_metrics(
                                                                  # cont_dir, rot_dir)
                 result_dict['n_pastures'].append(n_pastures)
-                result_dict['high_quality_perc'].append(high_quality_perc)
+                result_dict['num_animals'].append(num_animals)
                 result_dict['cp_ratio'].append(cp_ratio)
                 # result_dict['gain_%_diff'].append(gain_diff)
     composition_effect_df = pd.concat(df_list)
@@ -476,8 +474,9 @@ def erase_intermediate_files(outerdir):
             continue
 
 if __name__ == "__main__":
-    # rest_effect_wrapper()
-    # collect_results()
-    outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_results\avg_sd"
-    erase_intermediate_files(outerdir)
-    
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\stocking_density_test"
+    # stocking_dens_test_wrapper(outer_outdir)
+    outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_results\Ucross\stocking_density_test_force_intake"
+    # stocking_dens_test_wrapper(outer_outdir)
+    # erase_intermediate_files(outer_outdir)
+    composition_wrapper()
