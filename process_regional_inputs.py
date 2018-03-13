@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 import os
 import re
-import pygeoprocessing.geoprocessing
+# import pygeoprocessing.geoprocessing
 from osgeo import gdal
 import tempfile
 from tempfile import mkstemp
@@ -815,11 +815,12 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
     # 'ea08121.bil' for the 1st period of the 12th month of year 2008, etc
     
     # tempdir = tempfile.mkdtemp() todo remove
-    tempdir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_sum"
+    # tempdir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_sum"
     
     # make property centroid shapefile to extract values to points
-    point_shp = os.path.join(tempdir, 'centroid.shp')
-    arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
+    # point_shp = os.path.join(outdir, 'centroid.shp')
+    point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016_Mpala_split_centroid.shp"
+    # arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
     
     def sum_rasters(raster_list, save_as, cell_size):
         def sum_op(*rasters):
@@ -831,48 +832,55 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
                 dataset_to_align_index=0, assert_datasets_projected=False,
                 vectorize_op=False, datasets_are_pre_aligned=True)
         
-    bil_files = [f for f in os.listdir(FEWS_folder) if f.endswith(".bil")]
+    # bil_files = [f for f in os.listdir(FEWS_folder) if f.endswith(".bil")]
     
     # set nodata value
-    for f in bil_files:
-        raster = os.path.join(FEWS_folder, f)
-        source_ds = gdal.Open(raster)
-        band = source_ds.GetRasterBand(1)
-        band.SetNoDataValue(9999)
-        source_ds = None
-    template = raster = os.path.join(FEWS_folder, bil_files[0])
-    cell_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(template)
+    # for f in bil_files:
+        # raster = os.path.join(FEWS_folder, f)
+        # source_ds = gdal.Open(raster)
+        # band = source_ds.GetRasterBand(1)
+        # band.SetNoDataValue(9999)
+        # source_ds = None
+    # template = raster = os.path.join(FEWS_folder, bil_files[0])
+    # cell_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(template)
     
     # calculate monthly values from dekadal (10-day) estimates
-    field_list = ['FID']
-    ex_list = []
-    for year in range(0, 16):
-        for month in range(1, 13):
-            if year == 0 and month == 1:
-                continue
-            raster_list = [os.path.join(FEWS_folder,
-                                        'ea{:0>2}{:0>2}{}.bil'.format(
-                                        year, month, i)) for i in range(1, 4)]            
-            save_as = os.path.join(tempdir, '{}_{}.tif'.format(month, year))
-            sum_rasters(raster_list, save_as, cell_size)
-            field_name = 'RFE_{:0>2}_{:0>2}'.format(month, year)
-            field_list.append(field_name)
-            ex_list.append([save_as, field_name])
+    # field_list = ['FID']
+    # ex_list = []
+    # for year in range(0, 16):
+        # for month in range(1, 13):
+            # if year == 0 and month == 1:
+                # continue
+            # raster_list = [os.path.join(FEWS_folder,
+                                        # 'ea{:0>2}{:0>2}{}.bil'.format(
+                                        # year, month, i)) for i in range(1, 4)]            
+            # save_as = os.path.join(tempdir, '{}_{}.tif'.format(month, year))
+            # sum_rasters(raster_list, save_as, cell_size)
+            # field_name = 'RFE_{:0>2}_{:0>2}'.format(month, year)
+            # field_list.append(field_name)
+            # ex_list.append([save_as, field_name])
+    
+    sum_folder = FEWS_folder
+    monthly_rasters = [f for f in os.listdir(sum_folder) if f.endswith(".tif")]
+    ex_list = [[os.path.join(sum_folder, path), path]
+                for path in monthly_rasters]
+    field_list = [f[:-4] for f in monthly_rasters]
     
     # extract monthly values to each point
-    arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+    # arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
 
     # read monthly values into table
     num_val = len(field_list)
+    field_list.insert(0, 'FID')
     prec_dict = {'site': [], 'year': [], 'month': [], 'prec': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
             site = row[0]
             prec_dict['site'].extend([site] * num_val)
-            for f_idx in range(len(field_list)):
+            for f_idx in range(1, len(field_list)):
                 field = field_list[f_idx]
-                month = field[4:6]
-                year = field[7:9]
+                month = field.split('_')[0] # field[4:6]
+                year = field.split('_')[1] # field[7:9]
                 prec = row[f_idx]
                 prec_dict['year'].append(year)
                 prec_dict['month'].append(month)
@@ -1236,6 +1244,15 @@ def ucross_workflow():
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_inputs\Ucross\ucross_tripled_precip.100"
     wth_to_site_100(wth_file, site_template, save_as)
 
+def precip_data_for_Felicia():
+    """Data task for Felicia 3.13.18: annual rainfall from FEWS from property
+    ceontroids, including Mpala Ranch, Research, and combined"""
+    
+    zonal_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016_Mpala_split.shp"
+    FEWS_folder = r"E:\GIS_archive\Kenya_ticks\FEWS_RFE_sum"
+    prec_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\Climate\regional_precip_2014_2015_FEWS_RFE.csv"
+    process_FEWS_files(FEWS_folder, zonal_shp, prec_table)
+    
 if __name__ == "__main__":
-    mongolia_workflow()
+    precip_data_for_Felicia()
     
