@@ -682,14 +682,11 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir):
         arcpy.PointToRaster_conversion(temp_shp_out, shp_field, raster_path,
                                        cellsize=cell_size)  
     
-def collect_regression_testing_results(old_model_inputs_dict,
-                                       old_model_output_dir,
-                                       regression_testing_dir):
+def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
+                               results_table_path):
     """Collect results from old model to use as targets for regression
     testing of new model."""
     
-    if not os.path.exists(regression_testing_dir):
-        os.makedirs(regression_testing_dir)
     input_args = generate_base_args()
     # Century outputs to collect
     output_list = ['aglivc', 'stdedc', 'aglive(1)', 'stdede(1)',
@@ -737,10 +734,7 @@ def collect_regression_testing_results(old_model_inputs_dict,
                               convert_to_year_month(c[1])[1])
                               for c in century_reshape.columns.values]
     century_reshape.columns = cols
-    # convert results table to rasters for comparison with new model output rasters
-    # for now
-    century_reshape.to_csv(os.path.join(regression_testing_dir,
-                                        'century_outputs_reshape.csv'))
+    century_reshape.to_csv(results_table_path)
     print "The following sites failed:"
     print failed_sites
     
@@ -752,20 +746,27 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     # ensure that crop (e.g. GCD_G) is same between hist and extend schedule
     # add to grass csv to make PFT trait table
     
+def test_table_to_raster():
+    table = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev\regression_test_data\century_outputs_reshape.csv"
+    field_list = ['aglivc_2015_12', 'stdedc_2015_12', 'aglive(1)_2015_12',
+                  'stdede(1)_2015_12']
+    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+    save_dir = regression_testing_dir
+    table_to_raster(table, field_list, grid_point_shp, save_dir)
 
 
 if __name__ == "__main__":
     old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
     old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
     old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\pycentury_dev"
-    regression_testing_dir = os.path.join(old_model_processing_dir,
+    results_table_path = os.path.join(old_model_output_dir,
+                                      'century_results.csv')
+    regression_testing_dir = os.path.join(old_model_output_dir,
                                           'regression_test_data')
     old_model_inputs_dict = generate_inputs_for_old_model(
                                 old_model_processing_dir, old_model_input_dir)
-    launch_old_model(old_model_inputs_dict, old_model_input_dir,
-                     old_model_output_dir)
-    
-    collect_regression_testing_results(old_model_inputs_dict,
-                                       old_model_output_dir,
-                                       regression_testing_dir)
+    # launch_old_model(old_model_inputs_dict, old_model_input_dir,
+                     # old_model_output_dir)
+    old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
+                               results_table_path)
     
