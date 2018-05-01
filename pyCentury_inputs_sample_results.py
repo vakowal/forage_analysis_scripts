@@ -558,11 +558,66 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                             }
     return old_model_inputs_dict
 
-def launch_old_model():
+def launch_old_model(old_model_inputs_dict, old_model_input_dir,
+                     old_model_output_dir):
     """Run the old model with sample inputs. Most of this taken from the
     script Mongolia_monitoring_sites_launch_forage.py (i.e., results we
     generated for AGU in 2017)"""
+    
+    def modify_stocking_density(herbivore_csv, new_sd):
+        """Modify the stocking density in the herbivore csv used as input to
+        the forage model."""
+        
+        df = pd.read_csv(herbivore_csv)
+        df = df.set_index(['index'])
+        assert len(df) == 1, "We can only handle one herbivore type"
+        df['stocking_density'] = df['stocking_density'].astype(float)
+        df.set_value(0, 'stocking_density', new_sd)
+        df.to_csv(herbivore_csv)
+        
+    def edit_grass_csv(grass_csv, label):
+        """Edit the grass csv to reflect a new label, which points to the
+        Century inputs, so we can use one grass csv for multiple sites
+        Century inputs must exist."""
+        
+        df = pd.read_csv(grass_csv)
+        df = df.set_index(['index'])
+        assert len(df) == 1, "We can only handle one grass type"
+        df.set_value(0, 'label', label)
+        df[['label']] = df[['label']].astype(type(label))
+        df.to_csv(grass_csv)
+    
+    input_args = generate_base_args()
+    old_model_args = {
+            'input_dir': old_model_input_dir,
+            'prop_legume': 0.0,
+            'steepness': 1.,
+            'DOY': 1,
+            'start_year': input_args['starting_year'],
+            'start_month': input_args['starting_month'],
+            'num_months': input_args['n_months'],
+            'mgmt_threshold': 0.01,
+            'century_dir': 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+            'template_level': old_model_inputs_dict['template_level'], 
+            'fix_file': old_model_inputs_dict['fix_file'], 
+            'user_define_protein': 1,
+            'user_define_digestibility': 0,
+            'herbivore_csv': old_model_inputs_dict['herbivore_csv'], 
+            'grass_csv': old_model_inputs_dict['grass_csv'], 
+            'restart_monthly': 1,
+            }
 
+    modify_stocking_density(old_model_args['herbivore_csv'], 0)  # TODO relate sd to new model
+    site_list = pd.read_csv(
+                    old_model_inputs_dict['site_table']).to_dict(
+                                                         orient='records')
+    outer_outdir = old_model_output_dir
+    for site in site_list:
+        old_model_args['latitude'] = site['latitude']
+        old_model_args['outdir'] = os.path.join(outer_outdir,
+                                             '{}'.format(int(site['site_id'])))
+        edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
+        old_model.execute(old_model_args)
     
 def generate_inputs_for_new_model(old_model_inputs_dict):
     """Generate inputs for the new forage model that includes plant production
@@ -575,6 +630,12 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
 
 
 if __name__ == "__main__":
-    generate_inputs_for_old_model()
+    old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
+    old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
+    old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\pycentury_dev"
+    old_model_inputs_dict = generate_inputs_for_old_model(
+                                old_model_processing_dir, old_model_input_dir)
+    launch_old_model(old_model_inputs_dict, old_model_input_dir,
+                     old_model_output_dir)
     
     
