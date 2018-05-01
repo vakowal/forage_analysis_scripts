@@ -15,6 +15,7 @@ import arcpy
 import tempfile
 import shutil
 import re
+import math
 from tempfile import mkstemp
 
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
@@ -28,6 +29,23 @@ TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\temp
 TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016_hist.sch"
 TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016.sch"
     
+def convert_to_year_month(CENTURY_date):
+    """Convert CENTURY's representation of dates (from output file) to year
+    and month.  Returns a list containing integer year and integer month."""
+    
+    CENTURY_date = float(CENTURY_date)
+    if CENTURY_date - math.floor(CENTURY_date) == 0:
+        year = int(CENTURY_date - 1)
+        month = 12
+    else:
+        year = int(math.floor(CENTURY_date))
+        month = int(round(12. * (CENTURY_date - year)))
+    return [year, month]
+
+def convert_to_century_date(year, month):
+    """Convert year and month to Century's decimal representation of dates."""
+    
+    return '%.2f' % (year + month / 12.)
 
 def generate_base_args():
     """These raw inputs should work for both old and new models."""
@@ -630,6 +648,10 @@ def collect_regression_testing_results(old_model_inputs_dict,
     if not os.path.exists(regression_testing_dir):
         os.makedirs(regression_testing_dir)
     input_args = generate_base_args()
+    # Century outputs to collect
+    output_list = ['aglivc', 'stdedc', 'aglive(1)', 'stdede(1)',
+                   'aglive(2)', 'stdede(2)']
+    output_list.insert(0, 'time')
     
     # ensure only one PFT
     df = pd.read_csv(old_model_inputs_dict['grass_csv'])
@@ -639,9 +661,9 @@ def collect_regression_testing_results(old_model_inputs_dict,
     # collect from raw Century outputs, the last month of the simulation
     starting_month = int(input_args['starting_month'])
     starting_year = int(input_args['starting_year'])
-    month_i = int(input_args['n_months'])
+    month_i = int(input_args['n_months']) - 1
     last_month = (starting_month + month_i - 1) % 12 + 1
-    last_year = starting_year + (starting_month + last_month - 1) // 12
+    last_year = starting_year + (starting_month + month_i - 1) // 12
     century_out_basename = 'CENTURY_outputs_m{:d}_y{:d}'.format(
                                                         last_month, last_year)
     site_df = pd.read_csv(old_model_inputs_dict['site_table'])
@@ -660,17 +682,23 @@ def collect_regression_testing_results(old_model_inputs_dict,
         df_subset = cent_df[(cent_df.time >= starting_year) &
                             (cent_df.time <= last_year + 1)]
         df_subset = df_subset.drop_duplicates('time')
-        outputs = df_subset[['time', 'aglivc', 'stdedc',
-                             'aglive(1)', 'stdede(1)',
-                             'aglive(2)', 'stdede(2)']]
+        outputs = df_subset[output_list]
         outputs['site_id'] = site
         df_list.append(outputs)
     century_results = pd.concat(df_list)
+    
+    # reshape to "wide" format
+    century_reshape = pd.pivot_table(century_results, values=output_list[1:],
+                                     index='site_id', columns='time')
+    cols = ['{}_{}_{}'.format(c[0], convert_to_year_month(c[1])[0],
+                              convert_to_year_month(c[1])[1])
+                              for c in century_reshape.columns.values]
+    century_reshape.columns = cols
     # convert results table to rasters for comparison with new model output rasters
     # for now
-    century_results.to_csv(os.path.join(regression_testing_dir,
-                                        'century_outputs.csv'))
-    print "The following sites failed: "
+    century_reshape.to_csv(os.path.join(regression_testing_dir,
+                                        'century_outputs_reshape.csv'))
+    print "The following sites failed:"
     print failed_sites
     
 def generate_inputs_for_new_model(old_model_inputs_dict):
