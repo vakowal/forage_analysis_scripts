@@ -616,8 +616,62 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
         old_model_args['latitude'] = site['latitude']
         old_model_args['outdir'] = os.path.join(outer_outdir,
                                              '{}'.format(int(site['site_id'])))
-        edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
-        old_model.execute(old_model_args)
+        if not os.path.isfile(os.path.join(old_model_args['outdir'],
+                                               'summary_results.csv')):
+            edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
+            old_model.execute(old_model_args)
+    
+def collect_regression_testing_results(old_model_inputs_dict,
+                                       old_model_output_dir,
+                                       regression_testing_dir):
+    """Collect results from old model to use as targets for regression
+    testing of new model."""
+    
+    if not os.path.exists(regression_testing_dir):
+        os.makedirs(regression_testing_dir)
+    input_args = generate_base_args()
+    
+    # ensure only one PFT
+    df = pd.read_csv(old_model_inputs_dict['grass_csv'])
+    df = df.set_index(['index'])
+    assert len(df) == 1, "We can only handle one grass type"
+    
+    # collect from raw Century outputs, the last month of the simulation
+    starting_month = int(input_args['starting_month'])
+    starting_year = int(input_args['starting_year'])
+    month_i = int(input_args['n_months'])
+    last_month = (starting_month + month_i - 1) % 12 + 1
+    last_year = starting_year + (starting_month + last_month - 1) // 12
+    century_out_basename = 'CENTURY_outputs_m{:d}_y{:d}'.format(
+                                                        last_month, last_year)
+    site_df = pd.read_csv(old_model_inputs_dict['site_table'])
+    df_list = []
+    failed_sites = []
+    for site in site_df['site_id']:
+        century_out_file = os.path.join(old_model_output_dir,
+                                        '{}'.format(int(site)),
+                                        century_out_basename,
+                                        '{}.lis'.format(int(site)))
+        try:
+            cent_df = pd.io.parsers.read_fwf(century_out_file, skiprows = [1])
+        except IOError:
+            failed_sites.append(site)
+            continue
+        df_subset = cent_df[(cent_df.time >= starting_year) &
+                            (cent_df.time <= last_year + 1)]
+        df_subset = df_subset.drop_duplicates('time')
+        outputs = df_subset[['time', 'aglivc', 'stdedc',
+                             'aglive(1)', 'stdede(1)',
+                             'aglive(2)', 'stdede(2)']]
+        outputs['site_id'] = site
+        df_list.append(outputs)
+    century_results = pd.concat(df_list)
+    # convert results table to rasters for comparison with new model output rasters
+    # for now
+    century_results.to_csv(os.path.join(regression_testing_dir,
+                                        'century_outputs.csv'))
+    print "The following sites failed: "
+    print failed_sites
     
 def generate_inputs_for_new_model(old_model_inputs_dict):
     """Generate inputs for the new forage model that includes plant production
@@ -633,9 +687,14 @@ if __name__ == "__main__":
     old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
     old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
     old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\pycentury_dev"
+    regression_testing_dir = os.path.join(old_model_processing_dir,
+                                          'regression_test_data')
     old_model_inputs_dict = generate_inputs_for_old_model(
                                 old_model_processing_dir, old_model_input_dir)
     launch_old_model(old_model_inputs_dict, old_model_input_dir,
                      old_model_output_dir)
     
+    collect_regression_testing_results(old_model_inputs_dict,
+                                       old_model_output_dir,
+                                       regression_testing_dir)
     
