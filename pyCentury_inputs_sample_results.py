@@ -638,6 +638,49 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
                                                'summary_results.csv')):
             edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
             old_model.execute(old_model_args)
+
+def table_to_raster(table, field_list, grid_point_shp, save_dir):
+    """Generate a series of rasters from values in the fields `field_list` in
+    `table`. First join the values from the table to a shapefile containing
+    points, then generate a raster for each field in `field_list` from the
+    points shapefile.
+    `table` must contain a field `site_id` that can be matched to `site_id`
+    in the shapefile `grid_point_shp`."""
+    
+    cell_size = 0.05  # hard coded from CHIRPS
+    tempdir = tempfile.mkdtemp()
+    arcpy.env.workspace = tempdir
+    arcpy.env.overwriteOutput = True
+
+    
+    table_df = pd.read_csv(table)
+    table_df = table_df[['site_id'] + field_list].set_index('site_id')
+    temp_table_out = os.path.join(tempdir, 'temp_table.csv')
+    table_df.to_csv(temp_table_out)
+    shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
+    assert len(set(shp_fields).intersection(
+               set(table_df.reset_index().columns.values))) == 1, \
+               "Table and shapefile must contain 1 matching value"
+    # use this key to keep track of field names in original data sources,
+    # since the join and export will change them
+    field_key = shp_fields + ['site_id'] + field_list
+    
+    arcpy.MakeFeatureLayer_management(grid_point_shp, 'temp_layer')
+    arcpy.MakeTableView_management(temp_table_out, 'temp_table')
+    arcpy.AddJoin_management('temp_layer', 'site_id', 'temp_table', 'site_id')
+    temp_shp_out = os.path.join(tempdir, 'points.shp')
+    arcpy.CopyFeatures_management('temp_layer', temp_shp_out)
+    joined_field_list = [f.name for f in arcpy.ListFields(temp_shp_out)]
+    assert len(shp_fields) + len(field_list) + 1 == len(joined_field_list), \
+             "This is not working as expected"
+    start_idx = len(joined_field_list) - len(field_list)
+    end_idx = len(joined_field_list)
+    for field_idx in xrange(start_idx, end_idx):
+        field_name = field_key[field_idx]
+        shp_field = joined_field_list[field_idx]
+        raster_path = os.path.join(save_dir, '{}.tif'.format(field_name))
+        arcpy.PointToRaster_conversion(temp_shp_out, shp_field, raster_path,
+                                       cellsize=cell_size)  
     
 def collect_regression_testing_results(old_model_inputs_dict,
                                        old_model_output_dir,
