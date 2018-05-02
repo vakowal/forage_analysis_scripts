@@ -28,7 +28,8 @@ SAMPLE_DATA = "C:/Users/ginge/Documents/NatCap/sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
 TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016_hist.sch"
 TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016.sch"
-    
+CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+
 def convert_to_year_month(CENTURY_date):
     """Convert CENTURY's representation of dates (from output file) to year
     and month.  Returns a list containing integer year and integer month."""
@@ -619,7 +620,7 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
             'start_month': input_args['starting_month'],
             'num_months': input_args['n_months'],
             'mgmt_threshold': 0.01,
-            'century_dir': 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+            'century_dir': CENTURY_DIR,
             'template_level': old_model_inputs_dict['template_level'], 
             'fix_file': old_model_inputs_dict['fix_file'], 
             'user_define_protein': 1,
@@ -747,8 +748,74 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     model written in Python.  This should take the same raw inputs as
     'generate_inputs_for_old_model()'."""
     
-    # ensure that crop (e.g. GCD_G) is same between hist and extend schedule
+    new_model_args = generate_base_args()
+    # parameter table containing only necessary parameters
+    parameter_table = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_parameter_table.csv")
+    parameters_to_keep = parameter_table['Parameter name'].tolist()
+    crop_params = os.path.join(CENTURY_DIR, 'crop.100')
+    
+    # get crop from TEMPLATE_HIST and TEMPLATE_SCH
+    crop_list = set()
+    with open(TEMPLATE_HIST, 'rb') as hist_sch:
+        for line in hist_sch:
+            if ' CROP' in line:
+                crop_line = next(hist_sch)
+                crop_list.add(crop_line[:10].strip())
+    with open(TEMPLATE_SCH, 'rb') as hist_sch:
+        for line in hist_sch:
+            if ' CROP' in line:
+                crop_line = next(hist_sch)
+                crop_list.add(crop_line[:10].strip())
+    # ensure that crop (e.g. GCD_G) is same between hist and extend schedule 
+    assert len(crop_list) == 1, "We can only handle one PFT for old model"
+    PFT_label = list(crop_list)[0]
+    
+    # get crop parameters from crop.100 file in CENTURY_DIR
+    PFT_param_dict = {'PFT': 1}
+    with open(crop_params, 'rb') as cparam:
+        for line in cparam:
+            if line.startswith('{} '.format(PFT_label)):
+                while 'MXDDHRV' not in line:
+                    label = re.sub(r"\'", "", line[13:].strip()).lower()
+                    if label in parameters_to_keep:
+                        value = float(line[:13].strip())
+                        PFT_param_dict[label] = value
+                    line = next(cparam)
+                label = re.sub(r"\'", "", line[13:].strip()).lower()
+                if label in parameters_to_keep:
+                    value = float(line[:13].strip())
+                    PFT_param_dict[label] = value
+    
+    # get site parameters from TEMPLATE_100
+    site_param_dict = {'site': 1}
+    with open(TEMPLATE_100, 'rb') as siteparam:
+        for line in siteparam:
+            label = re.sub(r"\'", "", line[13:].strip()).lower()
+            if label in parameters_to_keep:
+                value = float(line[:13].strip())
+                site_param_dict[label] = value
+    # get fixed parameters from old_model_inputs_dict['fix_file']
+    with open(os.path.join(CENTURY_DIR, old_model_inputs_dict['fix_file']),
+              'rb') as siteparam:
+        for line in siteparam:
+            label = re.sub(r"\'", "", line[13:].strip()).lower()
+            if label in parameters_to_keep:
+                value = float(line[:13].strip())
+                site_param_dict[label] = value
+                
     # add to grass csv to make PFT trait table
+    grass_df = pd.read_csv(old_model_inputs_dict['grass_csv'])
+    grass_df = grass_df[['type', 'cprotein_green', 'cprotein_dead']]
+    pft_df = pd.DataFrame(PFT_param_dict, index=[0])
+    pft_table = pd.concat([grass_df, pft_df], axis=1)
+    pft_table.to_csv(new_model_args['veg_trait_path'], index=False)
+    
+    # make site parameter table
+    site_df = pd.DataFrame(site_param_dict, index=[0])
+    site_df.to_csv(new_model_args['site_param_path'], index=False)
+    
+    # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
+    # and old_model_inputs_dict['template_level']
     
 def test_table_to_raster():
     table = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev\regression_test_data\century_outputs_reshape.csv"
@@ -771,6 +838,6 @@ if __name__ == "__main__":
                                 old_model_processing_dir, old_model_input_dir)
     # launch_old_model(old_model_inputs_dict, old_model_input_dir,
                      # old_model_output_dir)
-    old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                               results_table_path)
-    
+    # old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
+                               # results_table_path)
+    generate_inputs_for_new_model(old_model_inputs_dict)
