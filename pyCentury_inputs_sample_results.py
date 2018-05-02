@@ -72,6 +72,10 @@ def generate_base_args():
                 SAMPLE_DATA, 'temp', 'wc2.0_30s_tmin_<month>.tif'),
             'max_temp_path_pattern': os.path.join(
                 SAMPLE_DATA, 'temp', 'wc2.0_30s_tmax_<month>.tif'),
+            'site_param_path': os.path.join(SAMPLE_DATA,
+                'site_parameters.csv'),
+            'site_param_raster_path_pattern': os.path.join(
+                SAMPLE_DATA, 'site<site>.tif'),
             'veg_trait_path': os.path.join(SAMPLE_DATA, 'pft_trait.csv'),
             'veg_spatial_composition_path_pattern': os.path.join(
                 SAMPLE_DATA, 'pft<PFT>.tif'),
