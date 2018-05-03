@@ -647,19 +647,21 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
             except:
                 continue
 
-def table_to_raster(table, field_list, grid_point_shp, save_dir):
+def table_to_raster(table, field_list, grid_point_shp, save_dir,
+                    save_as_field_list=None):
     """Generate a series of rasters from values in the fields `field_list` in
     `table`. First join the values from the table to a shapefile containing
     points, then generate a raster for each field in `field_list` from the
     points shapefile.
     `table` must contain a field `site_id` that can be matched to `site_id`
-    in the shapefile `grid_point_shp`."""
+    in the shapefile `grid_point_shp`.
+    If `save_as_field_list` is supplied, it must contain the basename for each
+    raster to be saved, in the same order as `field_list`."""
     
     cell_size = 0.05  # hard coded from CHIRPS
     tempdir = tempfile.mkdtemp()
     arcpy.env.workspace = tempdir
     arcpy.env.overwriteOutput = True
-
     
     table_df = pd.read_csv(table)
     table_df = table_df[['site_id'] + field_list].set_index('site_id')
@@ -671,7 +673,10 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir):
                "Table and shapefile must contain 1 matching value"
     # use this key to keep track of field names in original data sources,
     # since the join and export will change them
-    field_key = shp_fields + ['site_id'] + field_list
+    if save_as_field_list:
+        field_key = shp_fields + ['site_id'] + save_as_field_list
+    else:
+        field_key = shp_fields + ['site_id'] + field_list
     
     arcpy.MakeFeatureLayer_management(grid_point_shp, 'temp_layer')
     arcpy.MakeTableView_management(temp_table_out, 'temp_table')
@@ -837,10 +842,14 @@ def initial_variables_to_outvars():
     outvar_df = init_var_df['outvars']
     outvar_df.to_csv(outvars_table, header=False, index=False, sep='\t')
 
-def generate_initialization_tables():
+def generate_initialization_rasters():
     """Run the old model and collect results to be used as intialization
-    tables for new model."""
+    rasters for new model."""
     
+    initialization_dir = r"C:\Users\ginge\Documents\NatCap\initialization_data"
+    if not os.path.exists(initialization_dir):
+        os.makedirs(initialization_dir)
+    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
     input_args = generate_base_args()
                                       
     starting_month = int(input_args['starting_month'])
@@ -855,16 +864,27 @@ def generate_initialization_tables():
     launch_old_model(old_model_inputs_dict, old_model_input_dir,
                      old_model_output_dir)
 
-    # intialization tables
+    # intialization rasters
     outvar_df = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_initial_variables.csv")
+    outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
     for sbstr in ['PFT', 'site']:
         output_list = outvar_df[
-            outvar_df.Property_of == sbstr].State_variable_Century.tolist()
+            outvar_df.Property_of == sbstr].outvar.tolist()
+        field_list = ['{}_{}_{:02d}'.format(f, target_year, target_month)
+            for f in output_list]
         results_table_path = os.path.join(old_model_output_dir,
                                           '{}_initial.csv'.format(sbstr))
         old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
                                    results_table_path, output_list, start_time,
                                    end_time)
+        save_as_field_list = outvar_df[
+            outvar_df.Property_of == sbstr].\
+            State_variable_rangeland_production.tolist()
+        assert len(save_as_field_list) == len(field_list), """Save as field
+            list must be of equal length to field list"""
+        save_dir = initialization_dir
+        table_to_raster(results_table_path, field_list, grid_point_shp,
+                        save_dir, save_as_field_list=save_as_field_list)
     
     
 if __name__ == "__main__":
@@ -877,4 +897,4 @@ if __name__ == "__main__":
                                 old_model_processing_dir, old_model_input_dir)
     
     # generate_inputs_for_new_model(old_model_inputs_dict)
-    generate_initialization_tables()
+    generate_initialization_rasters()
