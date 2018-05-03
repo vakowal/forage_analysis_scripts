@@ -46,7 +46,7 @@ def convert_to_year_month(CENTURY_date):
 def convert_to_century_date(year, month):
     """Convert year and month to Century's decimal representation of dates."""
     
-    return '%.2f' % (year + month / 12.)
+    return float('%.2f' % (year + month / 12.))
 
 def generate_base_args():
     """These raw inputs should work for both old and new models."""
@@ -642,7 +642,10 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
         if not os.path.isfile(os.path.join(old_model_args['outdir'],
                                                'summary_results.csv')):
             edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
-            old_model.execute(old_model_args)
+            try:
+                old_model.execute(old_model_args)
+            except:
+                continue
 
 def table_to_raster(table, field_list, grid_point_shp, save_dir):
     """Generate a series of rasters from values in the fields `field_list` in
@@ -688,20 +691,15 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir):
                                        cellsize=cell_size)  
     
 def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                               results_table_path):
-    """Collect results from old model to use as targets for regression
-    testing of new model."""
+                               results_table_path, output_list, start_time,
+                               end_time):
+    """Collect results from old model to use as initial values or targets for
+    regression testing of new model.  Century outputs to collect should be
+    supplied in output_list. Outputs will be collected that fall in
+    [start_time, end_time]."""
     
     input_args = generate_base_args()
-    # Century outputs to collect
-    output_list = ['aglivc', 'stdedc', 'aglive(1)', 'stdede(1)',
-                   'aglive(2)', 'stdede(2)']
     output_list.insert(0, 'time')
-    
-    # ensure only one PFT
-    df = pd.read_csv(old_model_inputs_dict['grass_csv'])
-    df = df.set_index(['index'])
-    assert len(df) == 1, "We can only handle one grass type"
     
     # collect from raw Century outputs, the last month of the simulation
     starting_month = int(input_args['starting_month'])
@@ -724,10 +722,11 @@ def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
         except IOError:
             failed_sites.append(site)
             continue
-        df_subset = cent_df[(cent_df.time >= starting_year) &
-                            (cent_df.time <= last_year + 1)]
+        df_subset = cent_df[(cent_df.time >= start_time) &
+                            (cent_df.time <= end_time)]
         df_subset = df_subset.drop_duplicates('time')
         outputs = df_subset[output_list]
+        outputs = outputs.loc[:, ~outputs.columns.duplicated()]
         outputs['site_id'] = site
         df_list.append(outputs)
     century_results = pd.concat(df_list)
@@ -825,19 +824,57 @@ def test_table_to_raster():
     save_dir = regression_testing_dir
     table_to_raster(table, field_list, grid_point_shp, save_dir)
 
+def initial_variables_to_outvars():
+    """Make new outvars file (the output variables collected by Century) for
+    collection of variables needed to initialize new model."""
+    
+    initial_var_table = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_initial_variables.csv"
+    outvars_table = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014\outvars.txt"
+    
+    init_var_df = pd.read_csv(initial_var_table)
+    init_var_df['outvars'] = [v.lower() for
+        v in init_var_df.State_variable_Century]
+    outvar_df = init_var_df['outvars']
+    outvar_df.to_csv(outvars_table, header=False, index=False, sep='\t')
 
+def generate_initialization_tables():
+    """Run the old model and collect results to be used as intialization
+    tables for new model."""
+    
+    input_args = generate_base_args()
+                                      
+    starting_month = int(input_args['starting_month'])
+    starting_year = int(input_args['starting_year'])
+    month_i = -1
+    target_month = (starting_month + month_i - 1) % 12 + 1
+    target_year = starting_year + (starting_month + month_i - 1) // 12
+    start_time = convert_to_century_date(target_year, target_month)
+    end_time = start_time
+    
+    initial_variables_to_outvars()
+    launch_old_model(old_model_inputs_dict, old_model_input_dir,
+                     old_model_output_dir)
+
+    # intialization tables
+    outvar_df = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_initial_variables.csv")
+    for sbstr in ['PFT', 'site']:
+        output_list = outvar_df[
+            outvar_df.Property_of == sbstr].State_variable_Century.tolist()
+        results_table_path = os.path.join(old_model_output_dir,
+                                          '{}_initial.csv'.format(sbstr))
+        old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
+                                   results_table_path, output_list, start_time,
+                                   end_time)
+    
+    
 if __name__ == "__main__":
     old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
     old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
     old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\pycentury_dev"
-    results_table_path = os.path.join(old_model_output_dir,
-                                      'century_results.csv')
     regression_testing_dir = os.path.join(old_model_output_dir,
                                           'regression_test_data')
     old_model_inputs_dict = generate_inputs_for_old_model(
                                 old_model_processing_dir, old_model_input_dir)
-    # launch_old_model(old_model_inputs_dict, old_model_input_dir,
-                     # old_model_output_dir)
-    # old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                               # results_table_path)
-    generate_inputs_for_new_model(old_model_inputs_dict)
+    
+    # generate_inputs_for_new_model(old_model_inputs_dict)
+    generate_initialization_tables()
