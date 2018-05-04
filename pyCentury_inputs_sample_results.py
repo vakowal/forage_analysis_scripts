@@ -844,14 +844,6 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     
     # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
     # and old_model_inputs_dict['template_level']
-    
-def test_table_to_raster():
-    table = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev\regression_test_data\century_outputs_reshape.csv"
-    field_list = ['aglivc_2015_12', 'stdedc_2015_12', 'aglive(1)_2015_12',
-                  'stdede(1)_2015_12']
-    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
-    save_dir = regression_testing_dir
-    table_to_raster(table, field_list, grid_point_shp, save_dir)
 
 def initial_variables_to_outvars():
     """Make new outvars file (the output variables collected by Century) for
@@ -904,12 +896,62 @@ def generate_initialization_rasters():
         save_as_field_list = outvar_df[
             outvar_df.Property_of == sbstr].\
             State_variable_rangeland_production.tolist()
+        if sbstr == 'PFT':
+            # hack that assumes we have just one PFT
+            save_as_field_list = ['{}1'.format(f) for f in save_as_field_list]
         assert len(save_as_field_list) == len(field_list), """Save as field
             list must be of equal length to field list"""
         save_dir = initialization_dir
         table_to_raster(results_table_path, field_list, grid_point_shp,
                         save_dir, save_as_field_list=save_as_field_list)
     
+def generate_regression_tests():
+    """Run the old model and collect results to be used as regression testing
+    target rasters for new model."""
+    
+    regression_test_dir = r"C:\Users\ginge\Documents\NatCap\regression_test_data"
+    if not os.path.exists(regression_test_dir):
+        os.makedirs(regression_test_dir)
+    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+    input_args = generate_base_args()
+                                      
+    starting_month = int(input_args['starting_month'])
+    starting_year = int(input_args['starting_year'])
+    month_i = int(input_args['n_months'])
+    target_month = (starting_month + month_i - 1) % 12 + 1
+    target_year = starting_year + (starting_month + month_i - 1) // 12
+    start_time = convert_to_century_date(target_year, target_month)
+    end_time = start_time
+    
+    initial_variables_to_outvars()
+    launch_old_model(old_model_inputs_dict, old_model_input_dir,
+                     old_model_output_dir)
+
+    # regression testing rasters
+    outvar_df = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_initial_variables.csv")
+    outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
+    for sbstr in ['PFT', 'site']:
+        output_list = outvar_df[
+            outvar_df.Property_of == sbstr].outvar.tolist()
+        field_list = ['{}_{}_{:02d}'.format(f, target_year, target_month)
+            for f in output_list]
+        results_table_path = os.path.join(old_model_output_dir,
+                                          '{}_initial.csv'.format(sbstr))
+        old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
+                                   results_table_path, output_list, start_time,
+                                   end_time)
+        save_as_field_list = outvar_df[
+            outvar_df.Property_of == sbstr].\
+            State_variable_rangeland_production.tolist()
+        if sbstr == 'PFT':
+            # hack that assumes we have just one PFT
+            save_as_field_list = ['{}1'.format(f) for f in save_as_field_list]
+        assert len(save_as_field_list) == len(field_list), """Save as field
+            list must be of equal length to field list"""
+        save_dir = regression_test_dir
+        table_to_raster(results_table_path, field_list, grid_point_shp,
+                        save_dir, save_as_field_list=save_as_field_list)
+                        
     
 if __name__ == "__main__":
     old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
@@ -922,3 +964,4 @@ if __name__ == "__main__":
     
     # generate_inputs_for_new_model(old_model_inputs_dict)
     generate_initialization_rasters()
+    generate_regression_tests()
