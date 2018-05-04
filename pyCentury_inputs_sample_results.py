@@ -759,23 +759,47 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     crop_params = os.path.join(CENTURY_DIR, 'crop.100')
     
     # get crop from TEMPLATE_HIST and TEMPLATE_SCH
+    first_month = set()
+    senescence_month = set()
+    last_month = set()
     crop_list = set()
     with open(TEMPLATE_HIST, 'rb') as hist_sch:
         for line in hist_sch:
             if ' CROP' in line:
                 crop_line = next(hist_sch)
                 crop_list.add(crop_line[:10].strip())
+            if ' FRST' in line:
+                first_month.add(line[7:9].strip())
+            if ' SENM' in line:
+                senescence_month.add(line[7:9].strip())
+            if ' LAST' in line:
+                last_month.add(line[7:9].strip())
     with open(TEMPLATE_SCH, 'rb') as hist_sch:
         for line in hist_sch:
             if ' CROP' in line:
                 crop_line = next(hist_sch)
                 crop_list.add(crop_line[:10].strip())
+            if ' FRST' in line:
+                first_month.add(line[7:9].strip())
+            if ' SENM' in line:
+                senescence_month.add(line[7:9].strip())
+            if ' LAST' in line:
+                last_month.add(line[7:9].strip())
     # ensure that crop (e.g. GCD_G) is same between hist and extend schedule 
     assert len(crop_list) == 1, "We can only handle one PFT for old model"
+    # ensure that the file contains only one schedule to begin and end
+    # growth
+    assert len(first_month) == 1, "More than one starting month found"
+    assert len(last_month) == 1, "More than one ending month found"
     PFT_label = list(crop_list)[0]
     
     # get crop parameters from crop.100 file in CENTURY_DIR
     PFT_param_dict = {'PFT': 1}
+    PFT_param_dict['growth_months'] = ','.join([str(m) for m in
+        range(int(list(first_month)[0]), int(list(last_month)[0]) + 1)])
+    if senescence_month:
+        PFT_param_dict['growth_months'] = ','.join([str(m) for m in
+            list(senescence_month)])
     with open(crop_params, 'rb') as cparam:
         for line in cparam:
             if line.startswith('{} '.format(PFT_label)):
