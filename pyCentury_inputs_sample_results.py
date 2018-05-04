@@ -795,10 +795,10 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     
     # get crop parameters from crop.100 file in CENTURY_DIR
     PFT_param_dict = {'PFT': 1}
-    PFT_param_dict['growth_months'] = ','.join([str(m) for m in
-        range(int(list(first_month)[0]), int(list(last_month)[0]) + 1)])
+    PFT_param_dict['growth_months'] = [','.join([str(m) for m in
+        range(int(list(first_month)[0]), int(list(last_month)[0]) + 1)])]
     if senescence_month:
-        PFT_param_dict['growth_months'] = ','.join([str(m) for m in
+        PFT_param_dict['senescence_month'] = ','.join([str(m) for m in
             list(senescence_month)])
     with open(crop_params, 'rb') as cparam:
         for line in cparam:
@@ -831,15 +831,25 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                 value = float(line[:13].strip())
                 site_param_dict[label] = value
                 
+    def century_to_rp(century_label):
+        rp = re.sub(r"\(", "_", century_label)
+        rp = re.sub(r",", "_", rp)
+        rp = re.sub(r"\)", "", rp)
+        return rp
+    
     # add to grass csv to make PFT trait table
     grass_df = pd.read_csv(old_model_inputs_dict['grass_csv'])
     grass_df = grass_df[['type', 'cprotein_green', 'cprotein_dead']]
     pft_df = pd.DataFrame(PFT_param_dict, index=[0])
+    col_rename_dict = {c: century_to_rp(c) for c in pft_df.columns.values}
+    pft_df.rename(index=int, columns=col_rename_dict, inplace=True)
     pft_table = pd.concat([grass_df, pft_df], axis=1)
     pft_table.to_csv(new_model_args['veg_trait_path'], index=False)
     
     # make site parameter table
     site_df = pd.DataFrame(site_param_dict, index=[0])
+    col_rename_dict = {c: century_to_rp(c) for c in site_df.columns.values}
+    site_df.rename(index=int, columns=col_rename_dict, inplace=True)
     site_df.to_csv(new_model_args['site_param_path'], index=False)
     
     # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
@@ -962,6 +972,6 @@ if __name__ == "__main__":
     old_model_inputs_dict = generate_inputs_for_old_model(
                                 old_model_processing_dir, old_model_input_dir)
     
-    # generate_inputs_for_new_model(old_model_inputs_dict)
-    generate_initialization_rasters()
-    generate_regression_tests()
+    generate_inputs_for_new_model(old_model_inputs_dict)
+    # generate_initialization_rasters()
+    # generate_regression_tests()
