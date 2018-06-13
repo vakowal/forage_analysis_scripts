@@ -879,6 +879,239 @@ def process_EO():
         ['nearest'] * len(input_datasets),
         target_pixel_size, 'intersection', raster_align_index=0)
 
+
+def animal_distribution(
+        model_biomass_path, EO_biomass_index_path, total_animals,
+        processing_dir, animal_distribution_path):
+    """Draft workflow for animal spatial distribution submodel.
+
+    This submodel allocates grazing pressure across pixels inside an area of
+    interest through comparison of modeled biomass without grazing to a
+    vegetation index derived from Earth Observations.
+
+    Parameters:
+        model_biomass_path (string): path to raster containing modeled
+            biomass or carbon
+        EO_biomass_index_path (string): path to raster containing remotely
+            sensed vegetation index
+        total_animals (float): total number of animals assumed to be grazing
+            inside the area covered by both model and EO biomass rasters
+        processing_dir (string): directory to store intermediate outputs
+        animal_distribution_path (string): path to raster to store the result,
+            the number of animals grazing each pixel
+
+    Key assumptions:
+        the model biomass raster and EO biomass index raster align exactly
+        the area of interest occupied by the total animals aligns exactly with
+            the extent of the two rasters
+        the modeled biomass and EO index are linearly related
+
+    Modifies:
+        the raster indicated by `animal_distribution_path`
+
+    Returns:
+        None
+    """
+    def normalize_raster(raw_raster_path, normalized_raster_path):
+        """Normalize values of a raster by max and min values in the raster.
+
+        Parameters:
+            raw_raster_path (string): path to input raster that should be
+                normalized
+            normalized_raster_path (string): path to result raster containing
+                normalized values
+
+        Modifies:
+            the raster indicated by `normalized_raster_path`
+
+        Returns:
+            None
+        """
+        def normalize_op(values, minimum_value, maximum_value):
+            """Normalize values by minimum_value and maximum_value."""
+            valid_mask = (values != values_nodata)
+
+            result = numpy.empty(values.shape, dtype=numpy.float32)
+            result[:] = _TARGET_NODATA
+            result[valid_mask] = (
+                (values[valid_mask] - minimum_value[valid_mask])
+                / (maximum_value[valid_mask] - minimum_value[valid_mask]))
+            return result
+
+        values_nodata = pygeoprocessing.get_raster_info(
+            raw_raster_path)['nodata'][0]
+        # get raster info: minimum and maximum
+        min_val = None
+        max_val = None
+        for offset_map, raster_block in pygeoprocessing.iterblocks(
+                raw_raster_path):
+            valid_mask = raster_block != values_nodata
+
+            if min_val is None:
+                min_val = raster_block[valid_mask][0]
+            if max_val is None:
+                max_val = raster_block[valid_mask][0]
+
+            min_val = float(min(numpy.min(raster_block[valid_mask]), min_val))
+            max_val = float(max(numpy.max(raster_block[valid_mask]), max_val))
+
+        # new rasters from value base: minimum and maximum
+        minimum_val_raster = os.path.join(processing_dir, 'minimum.tif')
+        maximum_val_raster = os.path.join(processing_dir, 'maximum.tif')
+        pygeoprocessing.new_raster_from_base(
+            raw_raster_path, minimum_val_raster, gdal.GDT_Float32,
+            [_TARGET_NODATA], fill_value_list=[min_val])
+        pygeoprocessing.new_raster_from_base(
+            raw_raster_path, maximum_val_raster, gdal.GDT_Float32,
+            [_TARGET_NODATA], fill_value_list=[max_val])
+        pygeoprocessing.raster_calculator(
+            [(path, 1) for path in [
+                raw_raster_path, minimum_val_raster, maximum_val_raster]],
+            normalize_op, normalized_raster_path, gdal.GDT_Float32,
+            _TARGET_NODATA)
+        # clear minimum and maximum rasters
+        os.remove(minimum_val_raster)
+        os.remove(maximum_val_raster)
+
+    def subtract_raster1_from_raster2(raster1, raster2):
+        """Subtract raster1 from raster2."""
+        valid_mask = raster1 != _TARGET_NODATA
+        result = numpy.empty(raster1.shape, dtype=numpy.float32)
+        result[:] = _TARGET_NODATA
+        result[valid_mask] = (raster2[valid_mask] - raster1[valid_mask])
+        return result
+
+    def add_maxdiff_to_norm_biomass(modeled_normalized, max_diff):
+        """Add the maximum difference between EO and modeled to modeled."""
+        valid_mask = modeled_normalized != _TARGET_NODATA
+        result = numpy.empty(modeled_normalized.shape, dtype=numpy.float32)
+        result[:] = _TARGET_NODATA
+        result[valid_mask] = (
+            modeled_normalized[valid_mask] + max_diff[valid_mask])
+        return result
+
+    def divide_raster1_by_raster2(raster1, raster2):
+        """Divide raster1 by raster2."""
+        valid_mask = raster1 != _TARGET_NODATA
+        result = numpy.empty(raster1.shape, dtype=numpy.float32)
+        result[:] = _TARGET_NODATA
+        result[valid_mask] = (raster1[valid_mask] / raster2[valid_mask])
+        return result
+
+    def multiply_raster1_by_raster2(raster1, raster2):
+        """Multiply raster1 by raster2."""
+        valid_mask = raster1 != _TARGET_NODATA
+        result = numpy.empty(raster1.shape, dtype=numpy.float32)
+        result[:] = _TARGET_NODATA
+        result[valid_mask] = (raster1[valid_mask] * raster2[valid_mask])
+        return result
+
+    # normalize biomass
+    modeled_normalized_path = os.path.join(
+        processing_dir, 'normalized_biomass.tif')
+    normalize_raster(model_biomass_path, modeled_normalized_path)
+
+    # normalize EO
+    EO_normalized_path = os.path.join(
+        processing_dir, 'normalized_EO_index.tif')
+    normalize_raster(EO_biomass_index_path, EO_normalized_path)
+
+    # translate modeled index to be >= EO index
+    EO_minus_modeled_path = os.path.join(
+        processing_dir, 'EO_minus_modeled.tif')
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [
+            modeled_normalized_path, EO_normalized_path]],
+        subtract_raster1_from_raster2, EO_minus_modeled_path, gdal.GDT_Float32,
+        _TARGET_NODATA)
+
+    # get maximum difference between EO and modeled
+    max_diff = None
+    for offset_map, raster_block in pygeoprocessing.iterblocks(
+            EO_minus_modeled_path):
+        valid_mask = raster_block != _TARGET_NODATA
+
+        if max_diff is None:
+            max_diff = raster_block[valid_mask][0]
+
+        max_diff = float(max(numpy.max(raster_block[valid_mask]), max_diff))
+
+    maximum_diff_path = os.path.join(processing_dir, 'maximum_diff.tif')
+    pygeoprocessing.new_raster_from_base(
+        model_biomass_path, maximum_diff_path, gdal.GDT_Float32,
+        [_TARGET_NODATA], fill_value_list=[max_diff])
+
+    modeled_translated_path = os.path.join(
+        processing_dir, 'modeled_translated.tif')
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [
+            modeled_normalized_path, maximum_diff_path]],
+        add_maxdiff_to_norm_biomass, modeled_translated_path, gdal.GDT_Float32,
+        _TARGET_NODATA)
+
+    # adjusted difference in normalized values is proportional to
+    # estimated number of grazing animals
+    adjusted_diff_path = os.path.join(processing_dir, 'adjusted_diff.tif')
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [
+            EO_normalized_path, modeled_translated_path]],
+        subtract_raster1_from_raster2, adjusted_diff_path, gdal.GDT_Float32,
+        _TARGET_NODATA)
+
+    # rescale adjusted difference to proportion of total
+    sum_adjusted_diff = None
+    for offset_map, raster_block in pygeoprocessing.iterblocks(
+            adjusted_diff_path):
+        valid_mask = raster_block != _TARGET_NODATA
+
+        if sum_adjusted_diff is None:
+            sum_adjusted_diff = raster_block[valid_mask][0]
+
+        sum_adjusted_diff = float(
+            sum_adjusted_diff + numpy.sum(raster_block[valid_mask]))
+
+    sum_adjusted_diff_path = os.path.join(
+        processing_dir, 'sum_adjusted_diff.tif')
+    pygeoprocessing.new_raster_from_base(
+        model_biomass_path, sum_adjusted_diff_path, gdal.GDT_Float32,
+        [_TARGET_NODATA], fill_value_list=[sum_adjusted_diff])
+
+    proportional_adjusted_diff_path = os.path.join(
+        processing_dir, 'proportional_adjusted_diff.tif')
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [
+            adjusted_diff_path, sum_adjusted_diff_path]],
+        divide_raster1_by_raster2, proportional_adjusted_diff_path,
+        gdal.GDT_Float32, _TARGET_NODATA)
+
+    # number of animals on each pixel
+    total_animals_path = os.path.join(
+        processing_dir, 'total_animals.tif')
+    pygeoprocessing.new_raster_from_base(
+        model_biomass_path, total_animals_path, gdal.GDT_Float32,
+        [_TARGET_NODATA], fill_value_list=[total_animals])
+
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [
+            proportional_adjusted_diff_path, total_animals_path]],
+        multiply_raster1_by_raster2, animal_distribution_path,
+        gdal.GDT_Float32, _TARGET_NODATA)
+
+
+def test_animal_distribution():
+    model_biomass_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\aglivc.tif"
+    EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\NDVI_Manlai_extent_WGS84_rescale_reclassify.tif"
+    total_animals = 224593.
+    processing_dir = r"C:\Users\ginge\Desktop\test_animal_distribution_dir"
+    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution.tif"
+
+    animal_distribution(
+        model_biomass_path, EO_biomass_index_path, total_animals,
+        processing_dir, animal_distribution_path)
+
+
+
+
 if __name__ == "__main__":
     old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\iems_2018"
     old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
