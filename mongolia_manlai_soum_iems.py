@@ -979,7 +979,9 @@ def animal_distribution(
 
     def subtract_raster1_from_raster2(raster1, raster2):
         """Subtract raster1 from raster2."""
-        valid_mask = raster1 != _TARGET_NODATA
+        valid_mask = (
+            (raster1 != _TARGET_NODATA)
+            & (raster2 != _TARGET_NODATA))
         result = numpy.empty(raster1.shape, dtype=numpy.float32)
         result[:] = _TARGET_NODATA
         result[valid_mask] = (raster2[valid_mask] - raster1[valid_mask])
@@ -996,7 +998,9 @@ def animal_distribution(
 
     def divide_raster1_by_raster2(raster1, raster2):
         """Divide raster1 by raster2."""
-        valid_mask = raster1 != _TARGET_NODATA
+        valid_mask = (
+            (raster1 != _TARGET_NODATA)
+            & (raster2 != _TARGET_NODATA))
         result = numpy.empty(raster1.shape, dtype=numpy.float32)
         result[:] = _TARGET_NODATA
         result[valid_mask] = (raster1[valid_mask] / raster2[valid_mask])
@@ -1004,7 +1008,9 @@ def animal_distribution(
 
     def multiply_raster1_by_raster2(raster1, raster2):
         """Multiply raster1 by raster2."""
-        valid_mask = raster1 != _TARGET_NODATA
+        valid_mask = (
+            (raster1 != _TARGET_NODATA)
+            & (raster2 != _TARGET_NODATA))
         result = numpy.empty(raster1.shape, dtype=numpy.float32)
         result[:] = _TARGET_NODATA
         result[valid_mask] = (raster1[valid_mask] * raster2[valid_mask])
