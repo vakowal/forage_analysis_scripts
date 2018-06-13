@@ -1110,11 +1110,17 @@ def animal_distribution(
 
 def test_animal_distribution():
     model_biomass_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\aglivc.tif"
-    EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\NDVI_Manlai_extent_WGS84_rescale_reclassify.tif"
     total_animals = 224593.
     processing_dir = r"C:\Users\ginge\Desktop\test_animal_distribution_dir"
-    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution.tif"
 
+    EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\NDVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
+    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution_NDVI.tif"
+    animal_distribution(
+        model_biomass_path, EO_biomass_index_path, total_animals,
+        processing_dir, animal_distribution_path)
+
+    EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\EVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
+    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution_EVI.tif"
     animal_distribution(
         model_biomass_path, EO_biomass_index_path, total_animals,
         processing_dir, animal_distribution_path)
