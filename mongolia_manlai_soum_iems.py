@@ -5,12 +5,12 @@ import os
 import sys
 import pandas as pd
 import glob
-import numpy as np
+import numpy
 from osgeo import ogr
 from osgeo import gdal
 import collections
 import taskgraph
-import arcpy
+# import arcpy
 import tempfile
 import shutil
 import re
@@ -21,8 +21,12 @@ import pygeoprocessing
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage as old_model
 
+# Target nodata is for general rasters that are positive, and _IC_NODATA are
+# for rasters that are any range
+_TARGET_NODATA = -1.0
+_IC_NODATA = numpy.finfo('float32').min
 
-arcpy.CheckOutExtension("Spatial")
+# arcpy.CheckOutExtension("Spatial")
 
 SAMPLE_DATA = "C:/Users/ginge/Documents/NatCap/sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
@@ -56,7 +60,7 @@ def divide_CHIRPS_by_10():
 
     def div_by_10_op(orig_raster):
         valid_mask = (orig_raster != -9999)
-        result = np.empty(orig_raster.shape, dtype=np.float32)
+        result = numpy.empty(orig_raster.shape, dtype=numpy.float32)
         result[:] = -9999
         result[valid_mask] = orig_raster[valid_mask] / 10.
         return result
@@ -128,7 +132,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         tempdir = tempfile.mkdtemp()
         source_shp = site_shp
         site_shp = os.path.join(tempdir, 'points.shp')
-        arcpy.Copy_management(source_shp, site_shp)
+        # arcpy.Copy_management(source_shp, site_shp)
 
         raster_files = [input_args['bulk_density_path'],
                         input_args['ph_path'],
@@ -137,7 +141,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                         input_args['sand_proportion_path']]
         field_list = [os.path.basename(r)[:-4] for r in raster_files]
         ex_list = zip(raster_files, field_list)
-        arcpy.sa.ExtractMultiValuesToPoints(site_shp, ex_list)
+        # arcpy.sa.ExtractMultiValuesToPoints(site_shp, ex_list)
 
         # read from shapefile to new table
         field_list.insert(0, 'site_id')
@@ -186,17 +190,17 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         # add lat and long
         soil_df["latitude"] = "NA"
         soil_df["longitude"] = "NA"
-        arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(4326)  # WGS 1984
-        arcpy.AddXY_management(site_shp)
-        with arcpy.da.SearchCursor(site_shp,
-                                   ['site_id', 'POINT_X', 'POINT_Y']) \
-                                   as cursor:
-            for row in cursor:
-                try:
-                    soil_df = soil_df.set_value([row[0]], 'longitude', row[1])
-                    soil_df = soil_df.set_value([row[0]], 'latitude', row[2])
-                except KeyError:
-                    continue
+        # arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(4326)  # WGS 1984
+        # arcpy.AddXY_management(site_shp)
+        # with arcpy.da.SearchCursor(site_shp,
+        #                            ['site_id', 'POINT_X', 'POINT_Y']) \
+        #                            as cursor:
+        #     for row in cursor:
+        #         try:
+        #             soil_df = soil_df.set_value([row[0]], 'longitude', row[1])
+        #             soil_df = soil_df.set_value([row[0]], 'latitude', row[2])
+        #         except KeyError:
+        #             continue
         soil_df.to_csv(save_as)
 
     def write_temperature_table(site_shp, save_as):
@@ -207,7 +211,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         # make a temporary copy of the point shapefile to append worldclim values
         source_shp = site_shp
         point_shp = os.path.join(tempdir, 'points.shp')
-        arcpy.Copy_management(source_shp, point_shp)
+        # arcpy.Copy_management(source_shp, point_shp)
 
         temperature_month_set = set()
         starting_month = int(input_args['starting_month'])
@@ -225,24 +229,24 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                 raster_files.append(monthly_temp_path)
                 field_list.append('{}_{}'.format(substring, month_i))
         ex_list = zip(raster_files, field_list)
-        arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+        # arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
 
         # read from shapefile to newly formatted table
         field_list.insert(0, 'site_id')
         temp_dict = {'site': [], 'month': [], 'tmin': [], 'tmax': []}
-        with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
-            for row in cursor:
-                site = row[0]
-                temp_dict['site'].extend([site] * 12)
-                for f_idx in range(1, len(field_list)):
-                    field = field_list[f_idx]
-                    if field.startswith('min'):
-                        temp_dict['tmin'].append(row[f_idx])
-                    elif field.startswith('max'):
-                        temp_dict['tmax'].append(row[f_idx])
-                    else:
-                        raise Exception, "value not recognized"
-                temp_dict['month'].extend(temperature_month_set)
+        # with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
+        #     for row in cursor:
+        #         site = row[0]
+        #         temp_dict['site'].extend([site] * 12)
+        #         for f_idx in range(1, len(field_list)):
+        #             field = field_list[f_idx]
+        #             if field.startswith('min'):
+        #                 temp_dict['tmin'].append(row[f_idx])
+        #             elif field.startswith('max'):
+        #                 temp_dict['tmax'].append(row[f_idx])
+        #             else:
+        #                 raise Exception, "value not recognized"
+        #         temp_dict['month'].extend(temperature_month_set)
         for key in temp_dict.keys():
             if len(temp_dict[key]) == 0:
                 del temp_dict[key]
@@ -263,7 +267,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         # make a temporary copy of the point shapefile to append worldclim values
         source_shp = site_shp
         point_shp = os.path.join(tempdir, 'points.shp')
-        arcpy.Copy_management(source_shp, point_shp)
+        # arcpy.Copy_management(source_shp, point_shp)
 
         precip_dir = os.path.dirname(worldclim_pattern)
         precip_basename = os.path.basename(worldclim_pattern)
@@ -279,21 +283,21 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                                                     '%02d' % month_i)
             raster_files.append(precip_path)
         ex_list = zip(raster_files, month_list)
-        arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
+        # arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
 
         # read from shapefile to newly formatted table
         field_list = [str(m) for m in month_list]
         field_list.insert(0, 'site_id')
         prec_dict = {'site': [], 'month': [], 'prec': []}
-        with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
-            for row in cursor:
-                site = row[0]
-                prec_dict['site'].extend([site] * 12)
-                for f_idx in range(1, len(field_list)):
-                    field = field_list[f_idx]
-                    month = int(field)
-                    prec_dict['prec'].append(row[f_idx])
-                prec_dict['month'].extend(month_list)
+        # with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
+        #     for row in cursor:
+        #         site = row[0]
+        #         prec_dict['site'].extend([site] * 12)
+        #         for f_idx in range(1, len(field_list)):
+        #             field = field_list[f_idx]
+        #             month = int(field)
+        #             prec_dict['prec'].append(row[f_idx])
+        #         prec_dict['month'].extend(month_list)
         prec_df = pd.DataFrame.from_dict(prec_dict)
         # divide raw Worldclim precip by 10
         prec_df['prec'] = prec_df['prec'] / 10.
@@ -427,7 +431,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             df = df.drop('sort_col', 1)
             formats = ['%4s', '%6s'] + ['%7.2f'] * 12
             save_as = os.path.join(save_dir, '{}.wth'.format(site))
-            np.savetxt(save_as, df.values, fmt=formats, delimiter='')
+            numpy.savetxt(save_as, df.values, fmt=formats, delimiter='')
 
     def write_site_files(soil_table, worldclim_precip_table,
                          temperature_table, inputs_dir):
@@ -683,14 +687,14 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir,
 
     cell_size = 0.05  # hard coded from CHIRPS
     tempdir = tempfile.mkdtemp()
-    arcpy.env.workspace = tempdir
-    arcpy.env.overwriteOutput = True
+    # arcpy.env.workspace = tempdir
+    # arcpy.env.overwriteOutput = True
 
     table_df = pd.read_csv(table)
     table_df = table_df[['site_id'] + field_list].set_index('site_id')
     temp_table_out = os.path.join(tempdir, 'temp_table.csv')
     table_df.to_csv(temp_table_out)
-    shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
+    # shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
     assert len(set(shp_fields).intersection(
                set(table_df.reset_index().columns.values))) == 1, \
                "Table and shapefile must contain 1 matching value"
@@ -701,12 +705,12 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir,
     else:
         field_key = shp_fields + ['site_id'] + field_list
 
-    arcpy.MakeFeatureLayer_management(grid_point_shp, 'temp_layer')
-    arcpy.MakeTableView_management(temp_table_out, 'temp_table')
-    arcpy.AddJoin_management('temp_layer', 'site_id', 'temp_table', 'site_id')
+    # arcpy.MakeFeatureLayer_management(grid_point_shp, 'temp_layer')
+    # arcpy.MakeTableView_management(temp_table_out, 'temp_table')
+    # arcpy.AddJoin_management('temp_layer', 'site_id', 'temp_table', 'site_id')
     temp_shp_out = os.path.join(tempdir, 'points.shp')
-    arcpy.CopyFeatures_management('temp_layer', temp_shp_out)
-    joined_field_list = [f.name for f in arcpy.ListFields(temp_shp_out)]
+    # arcpy.CopyFeatures_management('temp_layer', temp_shp_out)
+    # joined_field_list = [f.name for f in arcpy.ListFields(temp_shp_out)]
     assert len(shp_fields) + len(field_list) + 1 == len(joined_field_list), \
              "This is not working as expected"
     start_idx = len(joined_field_list) - len(field_list)
@@ -715,8 +719,8 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir,
         field_name = field_key[field_idx]
         shp_field = joined_field_list[field_idx]
         raster_path = os.path.join(save_dir, '{}.tif'.format(field_name))
-        arcpy.PointToRaster_conversion(temp_shp_out, shp_field, raster_path,
-                                       cellsize=cell_size)
+        # arcpy.PointToRaster_conversion(temp_shp_out, shp_field, raster_path,
+                                       # cellsize=cell_size)
 
 def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
                                results_table_path, output_list, start_time,
@@ -850,12 +854,12 @@ def process_EO():
     model_results = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\iems_2018\aglivc.tif"
 
     target_pixel_size = pygeoprocessing.get_raster_info(model_results)['pixel_size']
-    target_nodata = np.finfo('float32').min
+    target_nodata = numpy.finfo('float32').min
     input_datasets = [model_results]
     aligned_dir = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018"
     aligned_datasets = [os.path.join(aligned_dir, os.path.basename(model_results))]
     def rescale_and_reclassify(EO):
-        rescaled = np.empty(EO.shape, dtype=np.float32)
+        rescaled = numpy.empty(EO.shape, dtype=numpy.float32)
         rescaled[:] = target_nodata
         rescaled[(EO >= 0)] = EO[(EO >= 0)] * 0.0001
         return rescaled
@@ -1122,4 +1126,5 @@ if __name__ == "__main__":
         # old_model_processing_dir, old_model_input_dir)
     # generate_model_result_rasters()
     # erase_files(old_model_output_dir)
-    process_EO()
+    # process_EO()
+    test_animal_distribution()
