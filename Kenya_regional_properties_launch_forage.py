@@ -5,18 +5,50 @@ import sys
 import re
 import shutil
 import math
+import random
 from tempfile import mkstemp
 import pandas as pd
 import numpy as np
+from datetime import datetime
 import back_calculate_management as backcalc
-sys.path.append(r'C:\Users\Ginger\Documents\Python\rangeland_production')
+sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage_century_link_utils as cent
 import forage
+
+
+def edit_conception_month(herbivore_csv, conception_step):
+    """Edit the conception month for breeding cows in the herbivore csv."""
+    df = pd.read_csv(herbivore_csv)
+    df = df.set_index(['index'])
+    df.loc[
+        df['conception_step'].notnull(), 'conception_step'] = conception_step
+    df.to_csv(herbivore_csv)
+
+
+def calc_stocking_density(herbivore_csv, overall_sd):
+    """Calculate the stocking density of each age/sex class.
+
+    Stocking density of each age/sex herbivore class is calculated by
+    multiplying the overall stocking density (i.e., total number animals per
+    ha) by the proportion of the herd that each age/sex class represents.
+
+    Modifies:
+        the herbivore csv file
+
+    Returns:
+        None
+    """
+    df = pd.read_csv(herbivore_csv)
+    df = df.set_index(['index'])
+    df['stocking_density'] = df['stocking_density'].astype(float)
+    df.stocking_density = overall_sd * df.proportion_of_herd
+    df.to_csv(herbivore_csv)
+
 
 def modify_stocking_density(herbivore_csv, new_sd):
     """Modify the stocking density in the herbivore csv used as input to the
     forage model."""
-    
+
     df = pd.read_csv(herbivore_csv)
     df = df.set_index(['index'])
     assert len(df) == 1, "We can only handle one herbivore type"
@@ -26,7 +58,7 @@ def modify_stocking_density(herbivore_csv, new_sd):
 
 def default_forage_args():
     """Default args for the forage model for regional properties."""
-    
+
     forage_args = {
             'prop_legume': 0.0,
             'steepness': 1.,
@@ -34,20 +66,20 @@ def default_forage_args():
             'start_year': 2014,
             'start_month': 1,
             'num_months': 24,
-            'mgmt_threshold': 0.1,
-            'century_dir': 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
+            'mgmt_threshold': 300,
+            'century_dir': 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014',
             'template_level': 'GH',
             'fix_file': 'drytrpfi.100',
             'user_define_protein': 1,
             'user_define_digestibility': 0,
-            'supp_csv': "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
+            'supp_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Rubanza_et_al_2005_supp.csv",
             }
     return forage_args
 
 def id_failed_simulation(result_dir, num_months):
     """Test whether a simulation completed the specified num_months. Returns 0
     if the simulation failed, 1 if the simulation succeeded."""
-    
+
     try:
         sum_csv = os.path.join(result_dir, 'summary_results.csv')
         sum_df = pd.read_csv(sum_csv)
@@ -56,14 +88,14 @@ def id_failed_simulation(result_dir, num_months):
     if len(sum_df) == (num_months + 1):
         return 1
     else:
-        return 0    
+        return 0
 
 def summarize_offtake():
     """Compare offtake among several sets of simulations differing in inputs."""
-    
+
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
-    
+
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     cp_opts = ['varying', 'constant']
     marg_dict = {'site': [], 'avg_offtake_varying_cp': [],
@@ -91,10 +123,10 @@ def summarize_remaining_biomass():
     """Summarize monthly biomass remaining at each site, assuming allowable use
     of 50% (cows + other grazers can offtake 50%). Calculate how many gazelle
     equivalents would be supported by forage remaining after cows offtake."""
-    
+
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
-    
+
     outer_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     cp_opts = ['cp']  # ['varying', 'constant']
     marg_dict = {'site': [], 'month': [], 'year': [], 'remaining_biomass': [],
@@ -104,7 +136,7 @@ def summarize_remaining_biomass():
             # inner_folder_name = "herd_avg_uncalibrated_0.3_{}_cp_GL".format(cp_o)
             inner_folder_name = "herd_avg_uncalibrated_constant_cp_GL_est_densities"
             inner_dir = os.path.join(outer_dir, inner_folder_name)
-            outdir_folder = [f for f in os.listdir(inner_dir) if 
+            outdir_folder = [f for f in os.listdir(inner_dir) if
                              f.startswith('site_{:d}_'.format(int(site['name'])))]
             try:
                 outdir = os.path.join(inner_dir, outdir_folder[0])
@@ -130,16 +162,392 @@ def summarize_remaining_biomass():
     df = pd.DataFrame(marg_dict)
     summary_csv = os.path.join(outer_dir, 'biomass_remaining_summary.csv')
     df.to_csv(summary_csv)
-    
+
+
+def fill_dict(d_fill, fill_val):
+    """Fill a dictionary with fill_val so that it can be converted to a pandas
+    data frame and written to csv."""
+
+    max_len = 0
+    for key in d_fill.keys():
+        if len(d_fill[key]) > max_len:
+            max_len = len(d_fill[key])
+    for key in d_fill.keys():
+        if len(d_fill[key]) < max_len:
+            for diff_val in xrange(max_len - len(d_fill[key])):
+                d_fill[key].append(fill_val)
+    return d_fill
+
+
+def combine_marg_df():
+    outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
+    existing_csv = [
+        os.path.join(outer_outdir, f) for f in os.listdir(outer_outdir) if
+        f.startswith('num_months_insufficient_summary')]
+    existing_df = [pd.read_csv(csv) for csv in existing_csv]
+    done_df = pd.concat(existing_df)
+    done_df.drop_duplicates(inplace=True)
+    now_str = datetime.now().strftime("%Y-%m-%d--%H_%M_%S")
+    save_as = os.path.join(
+        outer_outdir,
+        'num_months_insufficient_summary_{}.csv'.format(now_str))
+    done_df.to_csv(save_as, index=False)
+    for item in existing_csv:
+        os.remove(item)
+
+
+def summarize_energy_balance(summary_csv, herbivore_csv, save_as):
+    """Summarize energy and protein balance of the livestock herd."""
+    herd_input = pd.read_csv(herbivore_csv)
+    age_classes = herd_input.label.values.tolist()
+    model_output = pd.read_csv(summary_csv)
+    summary = model_output[['step']]
+    for class_i in age_classes:
+        protein_intake = model_output['{}DPLS'.format(class_i)]
+        protein_req = (
+            model_output['{}Pc'.format(class_i)] +
+            model_output['{}Pl'.format(class_i)] +
+            model_output['{}Pm'.format(class_i)])
+        protein_ratio = protein_intake / protein_req
+        e_intake = model_output['{}MEItotal'.format(class_i)]
+        e_req = (
+            model_output['{}MEc'.format(class_i)] +
+            model_output['{}MEl'.format(class_i)] +
+            model_output['{}MEm'.format(class_i)])
+        e_ratio = e_intake / e_req
+        summary['e_ratio_{}'.format(class_i)] = e_ratio
+        summary['protein_ratio_{}'.format(class_i)] = protein_ratio
+    summary.to_csv(save_as)
+
+
+def max_viable_density_rainfall_perturbations():
+    """Estimate maximum viable density with perturbed precip scenarios.
+
+    For each perturbed precipitation scenario (or a subset), run the model
+    at several stocking densities and calculate the number of months during
+    the run where the herd experienced diet insufficiency.
+
+    Returns:
+        None
+    """
+    site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    outer_input_dir = r"C:\Users\ginge\Documents\NatCap\model_inputs_Kenya\regional_precip_perturbations"
+    outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
+    conception_step = -4
+    template_herb_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\Ol_pej_herd.csv"
+    herd_input = pd.read_csv(template_herb_csv)
+    age_classes = herd_input.label.values.tolist()
+    marg_dict = {
+        'site': [],
+        'density': [],
+        'total_precip_perc_change': [],
+        'PCI_perc_change': [],
+        'num_months_insufficient': [],
+    }
+    # ------------------------------------------------------------------------
+    # stuff to vary that controls the experiment
+    # full change_perc_series:
+    # [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
+    change_perc_series = [-0.8, -0.4, 0, 0.4, 0.8, 1.2]
+    num_sites = 5
+    num_tries = 5
+    # this dict specifies starting stocking density according to the percent
+    # change in mean precip
+    starting_density_dict = {
+        -0.8: 0.1,
+        -0.4: 0.4,
+        0: 1.1,
+        0.4: 1.3,
+        0.8: 1.5,
+        1.2: 2.,
+    }
+    # site_subset = np.random.choice(len(site_list), num_sites)
+    site_subset = [0, 1, 2, 5, 9, 11, 12, 24, 18, 21]
+    # ------------------------------------------------------------------------
+    forage_args = default_forage_args()
+    forage_args['herbivore_csv'] = template_herb_csv
+    forage_args['template_level'] = 'GL'
+    edit_conception_month(template_herb_csv, conception_step)
+    target = 0.14734
+    try:
+        existing_csv = [
+            os.path.join(outer_outdir, f) for f in os.listdir(outer_outdir) if
+            f.startswith('num_months_insufficient_summary')]
+        existing_df = [pd.read_csv(csv) for csv in existing_csv]
+        done_df = pd.concat(existing_df)
+        done_df.drop_duplicates(inplace=True)
+        for mean_change_perc in change_perc_series:
+            for pci_change_perc in change_perc_series:
+                input_dir = os.path.join(
+                    outer_input_dir, 'total_precip_{}_PCI_{}'.format(
+                        mean_change_perc, pci_change_perc))
+                forage_args['input_dir'] = os.path.join(outer_input_dir, input_dir)
+                for site_index in site_subset:
+                    site = site_list[site_index]
+                    # find scenarios already run for this site
+                    site_df = done_df.loc[
+                        (done_df['site'] == site['name']) &
+                        (done_df['total_precip_perc_change'] ==
+                                    mean_change_perc) &
+                        (done_df['PCI_perc_change'] == pci_change_perc)]
+                    if len(site_df > 0):
+                        if min(site_df['density']) < 0.01:
+                            continue  # give up
+                        if (1 in site_df['num_months_insufficient'].values &
+                                2 in site_df['num_months_insufficient'].values):
+                            continue  # this combination is done
+                        if max(site_df['num_months_insufficient']) == 0:
+                            # start from the maximum density tested
+                            density = max(site_df['density'])
+                            num_months_insufficient = 0
+                        else:
+                            # start from density with smallest num months
+                            # insufficient
+                            pos_df = site_df.loc[
+                                site_df['num_months_insufficient'] > 0]
+                            num_months_insufficient = min(
+                                pos_df['num_months_insufficient'])
+                            density = pos_df.loc[
+                                pos_df['num_months_insufficient'] ==
+                                num_months_insufficient]['density']
+                            if len(density) > 1:
+                                density = max(density.values)
+                    else:  # no done runs for this combination yet
+                        density = starting_density_dict[mean_change_perc]
+                        num_months_insufficient = 0
+                        calc_stocking_density(template_herb_csv, density)
+                    for i in xrange(num_tries + 1):
+                        if num_months_insufficient >= 2:
+                            if num_months_insufficient >= 10:
+                                density = density - density * 0.5
+                            else:
+                                density = density - density * 0.1
+                            calc_stocking_density(template_herb_csv, density)
+                        elif num_months_insufficient == 0:
+                            density = density + density * 0.25
+                            calc_stocking_density(template_herb_csv, density)
+                        else:
+                            continue
+                        outdir = os.path.join(
+                            outer_outdir, 'exp{}'.format(site['name']))
+                        if not os.path.exists(outdir):
+                            os.makedirs(outdir)
+                        grass_csv = os.path.join(
+                            outer_input_dir, input_dir,
+                            '{:d}.csv'.format(int(site['name'])))
+                        add_cp_to_grass_csv(grass_csv, target)
+                        forage_args['grass_csv'] = grass_csv
+                        forage_args['latitude'] = site['lat']
+                        forage_args['outdir'] = outdir
+                        sum_csv = os.path.join(outdir, 'summary_results.csv')
+                        forage.execute(forage_args)
+                        model_output = pd.read_csv(sum_csv)
+                        model_output['herd_avg_diet_sufficiency'] = 0
+                        for class_i in age_classes:
+                            class_proportion = herd_input.loc[
+                                herd_input['label'] == class_i, 'proportion_of_herd']
+                            energy_intake = model_output['{}MEItotal'.format(class_i)]
+                            energy_req = model_output['{}E_req'.format(class_i)]
+                            diet_sufficiency = (
+                                (energy_intake - energy_req) / energy_req)
+                            model_output['herd_avg_diet_sufficiency'] += (
+                                diet_sufficiency * class_proportion.values)
+                        num_months_insufficient = len(
+                            model_output[
+                                model_output['herd_avg_diet_sufficiency'] < 0])
+                        marg_dict['site'].append(site['name'])
+                        marg_dict['density'].append(density)
+                        marg_dict['total_precip_perc_change'].append(
+                            mean_change_perc)
+                        marg_dict['PCI_perc_change'].append(
+                            pci_change_perc)
+                        marg_dict['num_months_insufficient'].append(
+                            num_months_insufficient)
+                        try:
+                            shutil.rmtree(outdir)
+                        except WindowsError:
+                            pass
+    finally:
+        filled_dict = fill_dict(marg_dict, 'NA')
+        marg_df = pd.DataFrame(filled_dict)
+
+        now_str = datetime.now().strftime("%Y-%m-%d--%H_%M_%S")
+        save_as = os.path.join(
+            outer_outdir,
+            'num_months_insufficient_summary_{}.csv'.format(now_str))
+        marg_df.to_csv(save_as, index=False)
+
+
+def rainfall_perturbations_experiment():
+    """Run the model at regional properties with perturbed precip.
+
+    Run the model at one stocking density with precip that has been perturbed
+    in terms of total amount (increased or decreased annual precip) or intra-
+    annual variability, keeping annual precip constant.
+
+    Returns:
+        None
+    """
+    outer_input_dir = r"C:\Users\ginge\Documents\NatCap\model_inputs_Kenya\regional_precip_perturbations"
+    tot_prec_regex = re.compile(r'total_precip_(.+?)_')
+    pci_regex = re.compile(r'_PCI_(.+?$)')
+    density = 1.015
+    conception_step = -4
+
+    template_herb_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\Ol_pej_herd.csv"
+    herd_input = pd.read_csv(template_herb_csv)
+    age_classes = herd_input.label.values.tolist()
+    marg_dict = {
+        'site': [], 'step': [], 'herd_avg_diet_sufficiency': [],
+        'total_precip_perc_change': [], 'PCI_perc_change': []}
+    site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
+    forage_args = default_forage_args()
+    forage_args['herbivore_csv'] = template_herb_csv
+    forage_args['template_level'] = 'GL'
+    edit_conception_month(template_herb_csv, conception_step)
+    calc_stocking_density(template_herb_csv, density)
+    target = 0.14734
+    input_dir_list = [
+        f for f in os.listdir(outer_input_dir)
+        if os.path.isdir(os.path.join(outer_input_dir, f))]
+    for input_dir in input_dir_list:
+        tot_precip_perc_change = float(
+            tot_prec_regex.search(input_dir).group(1))
+        PCI_perc_change = float(pci_regex.search(input_dir).group(1))
+        forage_args['input_dir'] = os.path.join(outer_input_dir, input_dir)
+        for site in site_list:
+            outdir = os.path.join(
+                outer_outdir, '{}_total_precip_{}_PCI_{}'.format(
+                    site['name'], tot_precip_perc_change, PCI_perc_change))
+            grass_csv = os.path.join(
+                outer_input_dir, input_dir,
+                '{:d}.csv'.format(int(site['name'])))
+            forage_args['grass_csv'] = grass_csv
+            forage_args['latitude'] = site['lat']
+            forage_args['outdir'] = outdir
+            sum_csv = os.path.join(outdir, 'summary_results.csv')
+            if not os.path.isfile(sum_csv):
+                forage.execute(forage_args)
+            model_output = pd.read_csv(sum_csv)
+            model_output['herd_avg_diet_sufficiency'] = 0
+            for class_i in age_classes:
+                class_proportion = herd_input.loc[
+                    herd_input['label'] == class_i, 'proportion_of_herd']
+                energy_intake = model_output['{}MEItotal'.format(class_i)]
+                energy_req = model_output['{}E_req'.format(class_i)]
+                diet_sufficiency = (energy_intake - energy_req) / energy_req
+                model_output['herd_avg_diet_sufficiency'] += (
+                    diet_sufficiency * class_proportion.values)
+            herd_avg_diet_sufficiency = model_output[
+                'herd_avg_diet_sufficiency'].values.tolist()
+            marg_dict['herd_avg_diet_sufficiency'].extend(
+                herd_avg_diet_sufficiency)
+            marg_dict['site'].extend(
+                [site['name']] * len(herd_avg_diet_sufficiency))
+            marg_dict['step'].extend(model_output['step'])
+            marg_dict['total_precip_perc_change'].extend(
+                [tot_precip_perc_change] * len(herd_avg_diet_sufficiency))
+            marg_dict['PCI_perc_change'].extend(
+                [PCI_perc_change] * len(herd_avg_diet_sufficiency))
+    marg_df = pd.DataFrame(marg_dict)
+    marg_df.to_csv(os.path.join(outer_outdir, 'energy_balance_summary.csv'))
+
+
+def Kenya_MS_regional_productivity():
+    """Run the forage model at constant stocking density.
+
+    Launch the model for each regional property at a constant stocking density.
+    Generate results for Kenya MS to demonstrate regional productivity.
+    This code adapted from the function run_preset_densities(), Sept 2018.
+
+    Returns:
+        None.
+    """
+    template_herb_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\Ol_pej_herd.csv"
+    herd_input = pd.read_csv(template_herb_csv)
+    age_classes = herd_input.label.values.tolist()
+    min_biomass_dict = {
+        'site': [], 'density': [], 'conception_step': [], 'min_biomass': []}
+    marg_dict = {
+        'site': [], 'density': [], 'step': [], 'herd_avg_diet_sufficiency': [],
+        'conception_step': []}
+    site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\energy_balance"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015"
+    forage_args = default_forage_args()
+    forage_args['input_dir'] = input_dir
+    forage_args['herbivore_csv'] = template_herb_csv
+    forage_args['template_level'] = 'GL'
+    target = 0.14734
+    density_list = [0.07, 0.385, 1.33, 1.015, 0.7]  # cattle per ha
+    conception_step_list = [-12, -8, -4, 0, 4, 8]
+    for conception_step in conception_step_list:
+        edit_conception_month(template_herb_csv, conception_step)
+        for density in density_list:
+            for site in site_list:
+                outdir = os.path.join(
+                    outer_outdir, 'site_{:d}_{}_{}'.format(int(site['name']),
+                    density, conception_step))
+                calc_stocking_density(template_herb_csv, density)
+                grass_csv = os.path.join(input_dir,
+                                         '{:d}.csv'.format(int(site['name'])))
+                # add_cp_to_grass_csv(grass_csv, target)  # TODO fluctuating N content?
+                forage_args['grass_csv'] = grass_csv
+                forage_args['latitude'] = site['lat']
+                forage_args['outdir'] = outdir
+                sum_csv = os.path.join(outdir, 'summary_results.csv')
+                if not os.path.isfile(sum_csv):
+                    forage.execute(forage_args)
+                model_output = pd.read_csv(sum_csv)
+                model_output['herd_avg_diet_sufficiency'] = 0
+                for class_i in age_classes:
+                    class_proportion = herd_input.loc[
+                        herd_input['label'] == class_i, 'proportion_of_herd']
+                    energy_intake = model_output['{}MEItotal'.format(class_i)]
+                    energy_req = model_output['{}E_req'.format(class_i)]
+                    diet_sufficiency = (energy_intake - energy_req) / energy_req
+                    model_output['herd_avg_diet_sufficiency'] += (
+                        diet_sufficiency * class_proportion.values)
+                herd_avg_diet_sufficiency = model_output[
+                    'herd_avg_diet_sufficiency'].values.tolist()
+                marg_dict['herd_avg_diet_sufficiency'].extend(
+                    herd_avg_diet_sufficiency)
+                marg_dict['site'].extend(
+                    [site['name']] * len(herd_avg_diet_sufficiency))
+                marg_dict['density'].extend(
+                    [density] * len(herd_avg_diet_sufficiency))
+                marg_dict['step'].extend(model_output['step'])
+                marg_dict['conception_step'].extend(
+                    [conception_step] * len(herd_avg_diet_sufficiency))
+
+                total_biomass = (
+                    model_output['{}_dead_kgha'.format(int(site['name']))] +
+                    model_output['{}_green_kgha'.format(int(site['name']))])
+                min_biomass = min(total_biomass)
+                min_biomass_dict['min_biomass'].append(min_biomass)
+                min_biomass_dict['site'].append(site['name'])
+                min_biomass_dict['density'].append(density)
+                min_biomass_dict['conception_step'].append(conception_step)
+    marg_df = pd.DataFrame(marg_dict)
+    marg_df.to_csv(os.path.join(outer_outdir, 'energy_balance_summary.csv'))
+
+    min_biomass_df = pd.DataFrame(min_biomass_dict)
+    min_biomass_df.to_csv(os.path.join(outer_outdir, 'min_biomass_summary.csv'))
+
+
 def run_preset_densities():
     """Run a series of stocking densities at each regional property."""
-    
+
     failed = []
     template_herb_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\herd_avg_uncalibrated.csv"
     # "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/castrate_suyian.csv"
     density_list = [0.07, 0.385, 0.7, 1.015, 1.33]  # cattle per ha
     target = 0.14734
-    
+
     marg_dict = {'site': [], 'density': [], 'avg_yearly_gain': [],
                  'total_yearly_delta_weight_kg_per_ha': []}
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
@@ -223,12 +631,12 @@ def erase_intermediate_files(outerdir):
                         continue
         except WindowsError:
             continue
-                    
+
 def summarize_match(match_csv, save_as):
     """summarize the results of back-calc management routine by collecting
     the final comparison of empirical vs simulated biomass from each site
     where the routine was run."""
-    
+
     sum_dict = {'year': [], 'site': [], 'live_or_total': [], 'g_m2': [],
                 'sim_vs_emp': []}
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014"
@@ -263,7 +671,7 @@ def summarize_match(match_csv, save_as):
 
 def set_grass_cp(grass_csv, live_cp, dead_cp):
     """Assign fixed crude protein, reset N multiplier"""
-    
+
     grass_df = pd.read_csv(grass_csv)
     grass_df['index'] = 0
     grass_df = grass_df.set_index(['index'])
@@ -274,13 +682,13 @@ def set_grass_cp(grass_csv, live_cp, dead_cp):
     grass_df.set_value(0, 'cprotein_dead', dead_cp)
     grass_df.set_value(0, 'N_multiplier', 1)
     grass_df.to_csv(grass_csv)
-    
+
 def calc_n_mult(forage_args, target):
     """Calculate N multiplier for a grass to achieve target crude protein
     content, and edit grass input to include that N multiplier. Target reflects
     crude protein of live grass. Target should be supplied as a float between 0
     and 1."""
-    
+
     tolerance = 0.001  # must be within this proportion of target value
     grass_df = pd.read_csv(forage_args['grass_csv'])
     grass_label = grass_df.iloc[0].label
@@ -307,12 +715,12 @@ def calc_n_mult(forage_args, target):
     sim_output = os.path.join(intermediate_dir, '{}.lis'.format(grass_label))
     first_year = forage_args['start_year']
     last_year = year
-    
+
     def get_raw_cp_green():
         # calculate n multiplier to achieve target
         outputs = cent.read_CENTURY_outputs(sim_output, first_year, last_year)
         outputs.drop_duplicates(inplace=True)
-        
+
         # restrict to months of the simulation
         first_month = forage_args[u'start_month']
         start_date = first_year + float('%.2f' % (first_month / 12.))
@@ -320,7 +728,7 @@ def calc_n_mult(forage_args, target):
         outputs = outputs[(outputs.index >= start_date)]
         outputs = outputs[(outputs.index <= end_date)]
         return np.mean(outputs.aglive1 / outputs.aglivc)
-    
+
     def set_n_mult():
         # edit grass csv to reflect calculated n_mult
         grass_df = pd.read_csv(forage_args['grass_csv'])
@@ -328,7 +736,7 @@ def calc_n_mult(forage_args, target):
         grass_df = grass_df.set_value(0, 'N_multiplier', float(n_mult))
         grass_df = grass_df.set_index('label')
         grass_df.to_csv(forage_args['grass_csv'])
-    
+
     n_mult = 1
     set_n_mult()
     forage.execute(args_copy)
@@ -344,23 +752,23 @@ def calc_n_mult(forage_args, target):
 def calc_n_months(match_csv, site_name):
     """Calculate the number of months to run the model, from 2014 measurement
     to 2015 measurement."""
-    
+
     site_df = pd.read_csv(match_csv)
-    
+
     sub_2015 = site_df.loc[(site_df.FID == int(site_name)) &
                            (site_df.Year == 2015)]
     date_list = sub_2015.sim_date.values[0].rsplit("/")
     year = date_list[2]
     month = '0{}'.format(date_list[0])
-    date_2015 = pd.to_datetime('{}-{}-28'.format(year, month), 
+    date_2015 = pd.to_datetime('{}-{}-28'.format(year, month),
                                format='%Y-%m-%d')
-    
+
     sub_2014 = site_df.loc[(site_df.FID == int(site_name)) &
                            (site_df.Year == 2014)]
     date_list = sub_2014.sim_date.values[0].rsplit("/")
     year = date_list[2]
     month = '0{}'.format(date_list[0])
-    date_2014 = pd.to_datetime('{}-{}-28'.format(year, month), 
+    date_2014 = pd.to_datetime('{}-{}-28'.format(year, month),
                                format='%Y-%m-%d')
     return (date_2015 - date_2014).days / 30
 
@@ -368,11 +776,11 @@ def move_input_files():
     """move the final schedule and graz files (if exists) from back-calc
     management output to a folder of inputs to run forward from a back-calc
     management result."""
-    
+
     back_calc_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\back_calc_2014_total"
     orig_input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip"
     new_input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\forward_from_2014"
-    
+
     folders = [f for f in os.listdir(back_calc_dir) if
                os.path.isdir(os.path.join(back_calc_dir, f))]
     for folder in folders:
@@ -400,21 +808,21 @@ def move_input_files():
         shutil.copyfile(final_sch, os.path.join(new_input_dir, '{}.sch'.format(FID)))
 
 def remove_grazing(match_csv, sch_dir):
-    """This was a good start but turned out to be harder than I thought so I 
+    """This was a good start but turned out to be harder than I thought so I
     abandoned it!!  The hard part is target_dict: it looks for the month
     previous to modify, but we  want to modify the month after."""
     """Remove grazing from schedule files in the sch_dir after the date for
     which biomass was matched (2014).  We assume that the correct (final)
     schedule file was already moved to the sch_dir using the function
     move_input_files()."""
-    
+
     site_list = generate_inputs(match_csv, 2014, 'total')
     for site in site_list:
         measurement_date = site['date']
         date = measurement_date + 0.17
         sch_file = os.path.join(sch_dir, '{}.sch'.format(site['name']))
         target_dict = cent.find_target_month(0, sch_file, date, 12)
-        
+
         fh, abs_path = mkstemp()
         os.close(fh)
         with open(abs_path, 'wb') as new_file:
@@ -444,9 +852,9 @@ def remove_grazing(match_csv, sch_dir):
                                             sch.next()
                                             continue
                                 new_file.write(line)
-                            line = sch.next()           
+                            line = sch.next()
                     new_file.write(line)
-        
+
         # just in case TODO copy abs_path to sch_file
         new_sch = os.path.join(sch_dir, '{}_modified.sch'.format(site['name']))
         shutil.copyfile(abs_path, new_sch)
@@ -456,7 +864,7 @@ def multiply_herb_densities(herb_csv, density_mult):
     """Create a new herbivore csv for input to the model with stocking density
     values multiplied by a constant, density_mult. return the filepath to the
     new csv."""
-    
+
     throwaway_dir = "C:/Users/Ginger/Desktop/throwaway_dir"
     if not os.path.exists(throwaway_dir):
         os.makedirs(throwaway_dir)
@@ -466,14 +874,14 @@ def multiply_herb_densities(herb_csv, density_mult):
     new_path = os.path.join(throwaway_dir, os.path.basename(herb_csv))
     herb_df.to_csv(new_path)
     return new_path
-    
+
 def empirical_densities_forward(match_csv, empir_outdir, density_mult):
     """Run forward from schedule matching biomass in 2014, with empirical
     densities of different animal types."""
-    
+
     live_cp = 0.1473
     dead_cp = 0.0609  # averages from lit review
-    
+
     # compare these results to those from back_calc_forward
     forage_args = default_forage_args()
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_forward_from_2014"
@@ -481,11 +889,11 @@ def empirical_densities_forward(match_csv, empir_outdir, density_mult):
     site_list = generate_inputs(match_csv, 2014, 'total')
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     lat_df = pd.read_csv(site_csv)
-    
+
     # move inputs (graz and schedule file) from back-calc results directory
     # to this new input directory
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\empty_after_2014"
-    
+
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
     fix_file = 'drytrpfi.100'
     forage_args['input_dir'] = input_dir
@@ -506,12 +914,12 @@ def empirical_densities_forward(match_csv, empir_outdir, density_mult):
         # multiply by constant density multiplier
         herb_csv_mult = multiply_herb_densities(herb_csv, density_mult)
         forage_args['herbivore_csv'] = herb_csv_mult
-        
+
         # modify crude protein of grass for this site, set N_mult to 1
         grass_csv = os.path.join(input_dir, '{}.csv'.format(site['name']))
         set_grass_cp(grass_csv, live_cp, dead_cp)
-        forage_args['grass_csv'] = grass_csv     
-        
+        forage_args['grass_csv'] = grass_csv
+
         # calculate n_months to run as difference between
         # 2014 and 2015 measurements
         n_months = calc_n_months(match_csv, site['name'])
@@ -529,7 +937,7 @@ def empirical_densities_forward(match_csv, empir_outdir, density_mult):
             os.makedirs(out_dir_site)
             forage_args['latitude'] = (lat_df[lat_df.name == int(site['name'])].lat).tolist()[0]
             forage.execute(forage_args)
-        
+
         if len(graz_filter) == 1:
             shutil.copyfile(os.path.join(century_dir, 'default_graz.100'),
                             def_graz_file)
@@ -537,9 +945,9 @@ def empirical_densities_forward(match_csv, empir_outdir, density_mult):
 
 def compare_biomass(match_csv, empir_outdir, density_mult):
     """collect biomass from empirical densities, and back-calc schedules."""
-    
+
     bc_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014\back_calc_match 2015"
-    
+
     sum_dict = {'site': [], 'biomass_emp_densities': [],
                 'biomass_back_calc': [], 'density_multiplier': []}
     site_list = generate_inputs(match_csv, 2015, 'total')
@@ -559,7 +967,7 @@ def compare_biomass(match_csv, empir_outdir, density_mult):
         if emp_subs.shape[0] != 1:
             import pdb; pdb.set_trace()
         # assert emp_subs.shape[0] == 1, "must be one row"
-        emp_biomass = (emp_subs.iloc[0]['{}_dead_kgha'.format(site['name'])] + 
+        emp_biomass = (emp_subs.iloc[0]['{}_dead_kgha'.format(site['name'])] +
                        emp_subs.iloc[0]['{}_green_kgha'.format(site['name'])]) * 0.1
         # TODO green biomass? later
         bc_res = pd.read_csv(os.path.join(bc_outdir,
@@ -578,18 +986,18 @@ def compare_biomass(match_csv, empir_outdir, density_mult):
 def back_calc_forward(match_csv, template_level):
     """Run the model forward from a back-calculated schedule, and match biomass
     at a later date."""
-    
+
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014"
-    
+
     live_or_total = 'total'
     year_to_match = 2015
-    
+
     site_list = generate_inputs(match_csv, year_to_match, live_or_total)
-    
+
     # move inputs (graz and schedule file) from back-calc results directory
     # to this new input directory
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\forward_from_2014"
-    
+
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
     out_dir = os.path.join(outer_outdir, "back_calc_match {}".format(
                                                                 year_to_match))
@@ -597,7 +1005,7 @@ def back_calc_forward(match_csv, template_level):
     threshold = 10.0
     max_iterations = 40
     fix_file = 'drytrpfi.100'
-        
+
     for site in site_list:
         # find graz file associated with back-calc management
         graz_filter = [f for f in os.listdir(input_dir) if
@@ -608,14 +1016,14 @@ def back_calc_forward(match_csv, template_level):
             shutil.copyfile(def_graz_file, os.path.join(century_dir,
                             'default_graz.100'))
             shutil.copyfile(graz_file, def_graz_file)
-                
+
         # calculate n_months to back-calc management as difference between
         # 2014 and 2015 measurements
         n_months = calc_n_months(match_csv, site['name'])
 
         out_dir_site = os.path.join(out_dir, 'FID_{}'.format(site['name']))
         if not os.path.exists(out_dir_site):
-            os.makedirs(out_dir_site) 
+            os.makedirs(out_dir_site)
         backcalc.back_calculate_management(site, input_dir,
                                            century_dir, out_dir_site,
                                            fix_file, n_months,
@@ -626,11 +1034,11 @@ def back_calc_forward(match_csv, template_level):
             shutil.copyfile(os.path.join(century_dir, 'default_graz.100'),
                             def_graz_file)
             os.remove(os.path.join(century_dir, 'default_graz.100'))
-                                        
+
 def back_calc_mgmt(match_csv, template_level):
     """Use the back-calc management routine to calculate management at regional
     properties prior to the 2014 or 2015 measurement."""
-    
+
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties"
     for live_or_total in ['total']:  # , 'live']:
         for year_to_match in [2015]:  # , 2015]:
@@ -649,7 +1057,7 @@ def back_calc_mgmt(match_csv, template_level):
                 out_dir_site = os.path.join(out_dir, 'FID_{}'.format(
                                                                  site['name']))
                 if not os.path.exists(out_dir_site):
-                    os.makedirs(out_dir_site) 
+                    os.makedirs(out_dir_site)
                 backcalc.back_calculate_management(site, input_dir,
                                                    century_dir, out_dir_site,
                                                    fix_file, n_months,
@@ -661,7 +1069,7 @@ def generate_inputs(match_csv, year_to_match, live_or_total):
     """Generate a list that can be used as input to run the back-calc
     management routine.  Year_to_match should be 2014 or 2015.  live_or_total
     should be 'live' or 'total'."""
-    
+
     site_list = []
     site_df = pd.read_csv(match_csv)
     for site in site_df.Property.unique():
@@ -684,10 +1092,10 @@ def generate_inputs(match_csv, year_to_match, live_or_total):
                                                     'mean_biomass_gm2')
         site_list.append(site_dict)
     return site_list
-        
+
 def run_baseline(site_csv):
     """Run the model with zero grazing, for each regional property."""
-    
+
     forage_args = default_forage_args()
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip"
     outer_output_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\zero_dens\Worldclim_precip"
@@ -708,7 +1116,7 @@ def run_baseline(site_csv):
 def combine_summary_files(site_csv):
     """Make a file that can be used to plot biomass differences between
     sites."""
-    
+
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\zero_dens\Worldclim_precip\combined_summary.csv"
     df_list = []
     outer_output_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\zero_dens\Worldclim_precip"
@@ -729,7 +1137,7 @@ def combine_summary_files(site_csv):
 def summarize_sch_wrapper(match_csv):
     """Wrapper function to summarize back-calculated schedules in several
     directories specified by year_to_match and live_or_total."""
-    
+
     n_months = 24
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\forward_from_2014"
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014"
@@ -739,7 +1147,7 @@ def summarize_sch_wrapper(match_csv):
             site_list = generate_inputs(match_csv, year_to_match,
                                         live_or_total)
             # outerdir = os.path.join(outer_outdir, "back_calc_{}_{}".format(
-                                                 # year_to_match, live_or_total))         
+                                                 # year_to_match, live_or_total))
             outerdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\forward_from_2014\back_calc_match 2015"
             raw_file = os.path.join(outerdir,
                                    "{}_{}_schedule_summary.csv".format(
@@ -747,14 +1155,14 @@ def summarize_sch_wrapper(match_csv):
             summary_file = os.path.join(outerdir,
                                    "{}_{}_percent_removed.csv".format(
                                    year_to_match, live_or_total))
-            backcalc.summarize_calc_schedules(site_list, n_months, input_dir, 
+            backcalc.summarize_calc_schedules(site_list, n_months, input_dir,
                                               century_dir, outerdir, raw_file,
                                               summary_file)
-    
+
 def add_cp_to_grass_csv(csv_file, target):
     """Modify the crude protein content in the grass csv used as input to the
     forage model."""
-    
+
     df = pd.read_csv(csv_file)
     df['index'] = 0
     df = df.set_index(['index'])
@@ -767,7 +1175,7 @@ def add_cp_to_grass_csv(csv_file, target):
 
 def initialize_n_mult(csv_file):
     """Set N_multiplier to 1."""
-    
+
     df = pd.read_csv(csv_file)
     df['index'] = 0
     df = df.set_index(['index'])
@@ -777,7 +1185,7 @@ def initialize_n_mult(csv_file):
 
 def summarize_cp_content(outer_dir):
     """What was the cp content of grasses that was created with n_mult?"""
-    
+
     cp_summary = {'site': [], 'n_mult': [], 'cp_mean': [], 'cp_stdev': []}
     input_dir = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015"
     forage_args = default_forage_args()
@@ -792,7 +1200,7 @@ def summarize_cp_content(outer_dir):
         grass_df = grass_df.set_index(['index'])
         assert len(grass_df) == 1, "We can only handle one grass type"
         n_mult = grass_df.get_value(0, 'N_multiplier')
-        
+
         # calculate cp content that was achieved
         outdir = os.path.join(outer_dir, 'site_{:d}'.format(int(site['name'])))
         final_month = forage_args[u'start_month'] + forage_args['num_months'] - 1
@@ -820,7 +1228,7 @@ def summarize_cp_content(outer_dir):
         outputs.cp_green = (outputs.aglive1 / outputs.aglivc) * n_mult
         mean_cp_green = np.mean(outputs.cp_green)
         stdev_cp_green = np.std(outputs.cp_green)
-        
+
         cp_summary['site'].append(site['name'])
         cp_summary['n_mult'].append(n_mult)
         cp_summary['cp_mean'].append(mean_cp_green)
@@ -829,11 +1237,11 @@ def summarize_cp_content(outer_dir):
     sum_df.set_index('site', inplace =True)
     save_as = os.path.join(outer_dir, 'cp_summary.csv')
     sum_df.to_csv(save_as)
-        
+
 def back_calc_workflow():
     """Functions that were called under main when I was doing back-calc runs on
     regional properties."""
-    
+
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     # run_baseline(site_csv)
     # combine_summary_files(site_csv)
@@ -849,7 +1257,7 @@ def back_calc_workflow():
     summarize_remaining_biomass()
 
 def back_calc_regional_avg():
-    
+
     # back-calculate to match average biomass on regional properties in 2014
     century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\back_calc_match_2014"
@@ -863,14 +1271,14 @@ def back_calc_regional_avg():
     template_level = 'GH'
     site = {'biomass': 248.7, 'date': 2014.58, 'name': 'prop_avg'}
     # if not os.path.exists(out_dir):
-        # os.makedirs(out_dir) 
+        # os.makedirs(out_dir)
     # backcalc.back_calculate_management(site, input_dir,
                                        # century_dir, out_dir,
                                        # fix_file, n_months,
                                        # vary, live_or_total,
                                        # threshold, max_iterations,
                                        # template_level)
-    
+
     # back-calculate forward to match average biomass on regional properties in 2015
     century_dir = 'C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\back_calc_match_2014"
@@ -884,7 +1292,7 @@ def back_calc_regional_avg():
     template_level = 'GH'
     site = {'biomass': 218.33, 'date': 2015.58, 'name': 'prop_avg'}
     # if not os.path.exists(out_dir):
-        # os.makedirs(out_dir) 
+        # os.makedirs(out_dir)
     # backcalc.back_calculate_management(site, input_dir,
                                        # century_dir, out_dir,
                                        # fix_file, n_months,
@@ -901,21 +1309,21 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
     """Run each property forward from schedule matching biomass in 2014, at
     mean animal densities for each ecolclass. This is a mishmash of
     regional_scenarios() and empirical_densities_forward()"""
-    
+
     live_cp = 0.1473
     dead_cp = 0.0609  # averages from lit review
-    
+
     # compare these results to those from back_calc_forward
     forage_args = default_forage_args()
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_forward_from_2014"
     site_list = generate_inputs(match_csv, 2014, 'total')
     site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     lat_df = pd.read_csv(site_csv)
-    
+
     # move inputs (graz and schedule file) from back-calc results directory
     # to this new input directory
     input_dir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\empty_after_2014"
-    
+
     century_dir = r'C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
     fix_file = 'drytrpfi.100'
     forage_args['input_dir'] = input_dir
@@ -931,12 +1339,12 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
             shutil.copyfile(def_graz_file, os.path.join(century_dir,
                             'default_graz.100'))
             shutil.copyfile(graz_file, def_graz_file)
-        
+
         # modify crude protein of grass for this site, set N_mult to 1
         grass_csv = os.path.join(input_dir, '{}.csv'.format(site['name']))
         set_grass_cp(grass_csv, live_cp, dead_cp)
-        forage_args['grass_csv'] = grass_csv     
-        
+        forage_args['grass_csv'] = grass_csv
+
         # calculate n_months to run as difference between
         # 2014 and 2015 measurements
         n_months = calc_n_months(match_csv, site['name'])
@@ -948,7 +1356,7 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
         else:
             month = int(mo_float) + 1
         forage_args['start_month'] = month
-        
+
         # run with animal densities reflecting each ecol class
         for ecol_class in ['livestock', 'integrated', 'wildlife']:
             forage_args['herbivore_csv'] = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\regional_scenarios\herbivores_regional_scenarios_{}.csv".format(ecol_class)
@@ -961,7 +1369,7 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
                 forage_args['latitude'] = (lat_df[lat_df.name == int(site['name'])].lat).tolist()[0]
                 forage.execute(forage_args)
             # collect biomass at 2015 measurement date for each ecolclass
-        
+
         if len(graz_filter) == 1:
             shutil.copyfile(os.path.join(century_dir, 'default_graz.100'),
                             def_graz_file)
@@ -969,7 +1377,7 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
 
     def collect_biomass():
         """summarize biomass at each ecolclass within each property"""
-        
+
         sum_dict = {'site': [], 'ecolclass': [], 'green_biomass': [],
                     'total_biomass': []}
         site_list = generate_inputs(match_csv, 2015, 'total')
@@ -993,7 +1401,7 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
                 if emp_subs.shape[0] != 1:
                     import pdb; pdb.set_trace()
                 gre_biomass = emp_subs.iloc[0]['{}_green_kgha'.format(site['name'])] * 0.1
-                tot_biomass = (emp_subs.iloc[0]['{}_dead_kgha'.format(site['name'])] + 
+                tot_biomass = (emp_subs.iloc[0]['{}_dead_kgha'.format(site['name'])] +
                                emp_subs.iloc[0]['{}_green_kgha'.format(site['name'])]) * 0.1
                 sum_dict['site'].append(site['name'])
                 sum_dict['ecolclass'].append(ecol_class)
@@ -1002,10 +1410,10 @@ def scenario_mean_ecolclass_by_property(match_csv, empir_outdir, save_as):
         sum_df = pd.DataFrame(sum_dict)
         sum_df.to_csv(save_as)
     collect_biomass()
-        
+
 def regional_scenarios():
     """Run scenario analysis for regional properties."""
-    
+
     # back_calc_regional_avg()
     # run forward from 2014 measurement with empirical numbers (all inputs
     # averaged across properties, including densities of different animal types)
@@ -1024,7 +1432,7 @@ def regional_scenarios():
 
 def regional_scenarios_by_property():
     """Workflow to run scenario analysis for each property separately"""
-    
+
     match_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\From_Sharon\Processed_by_Ginger\regional_PDM_summary.csv"
     outer_outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_forward_from_2014_density_mult"
     comp_list = []
@@ -1038,8 +1446,10 @@ def regional_scenarios_by_property():
     sum_df = pd.concat(comp_list)
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\biomass_comparison.csv"
     sum_df.to_csv(save_as)
-        
-if __name__ == "__main__":
+
+
+def scenario_workflow():
+    """Workflow that was under 'main' when running scenarios."""
     # regional_scenarios()
     # regional_scenarios_by_property()
     # run_preset_densities()
@@ -1047,3 +1457,8 @@ if __name__ == "__main__":
     outdir = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_scenarios\empirical_densities_within_property"
     save_as = os.path.join(outdir, "biomass_summary.csv")
     scenario_mean_ecolclass_by_property(match_csv, outdir, save_as)
+
+
+if __name__ == "__main__":
+    max_viable_density_rainfall_perturbations()
+    # combine_marg_df()
