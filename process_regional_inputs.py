@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 import os
 import re
+import random
 # import pygeoprocessing.geoprocessing
 from osgeo import gdal
 import tempfile
@@ -13,36 +14,36 @@ from tempfile import mkstemp
 import shutil
 import sys
 sys.path.extend(
- [r'C:\Users\Ginger\Documents\Python\rangeland_production',
-  r'C:\Users\Ginger\Documents\Python\ginger-precip-raster-sample'])
+ [r'C:\Users\ginge\Documents\Python\rangeland_production',
+  r'C:\Users\ginge\Documents\Python\ginger-precip-raster-sample'])
 import forage_century_link_utils as cent
 # import raster_to_point_vector as rtp
-import arcpy
+# import arcpy
 
-arcpy.CheckOutExtension("Spatial")
+# arcpy.CheckOutExtension("Spatial")
 
 def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
     """Calculate average annual precipitation within properties identified by
     zonal_shp.  raster_dir should identify the folder of rasters, one for each
     month.  Save the table as save_as."""
-    
+
     mosaicdir = os.path.join(raster_dir, "mosaic")
     if not os.path.exists(mosaicdir):
         os.makedirs(mosaicdir)
-        
+
     sumdir = os.path.join(raster_dir, "sum")
     if not os.path.exists(sumdir):
         os.makedirs(sumdir)
-    
+
     for m in range(1, 13):
         inputs = [os.path.join(raster_dir, "prec{}_27.tif".format(m)),
                   os.path.join(raster_dir, "prec{}_37.tif".format(m))]
         save_name = "mosaic_prec{}.tif".format(m)
         if not os.path.isfile(os.path.join(mosaicdir, save_name)):
-            arcpy.MosaicToNewRaster_management(inputs, mosaicdir, save_name, 
+            arcpy.MosaicToNewRaster_management(inputs, mosaicdir, save_name,
                                                    "", "32_BIT_FLOAT", "", 1,
                                                    "LAST", "")
-                                               
+
     def sum_rasters(raster_list, save_as, cell_size):
         def sum_op(*rasters):
             return np.sum(np.array(rasters), axis=0)
@@ -52,7 +53,7 @@ def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
                 gdal.GDT_UInt16, nodata, cell_size, "union",
                 dataset_to_align_index=0, assert_datasets_projected=False,
                 vectorize_op=False, datasets_are_pre_aligned=True)
-    
+
     raster_list = [os.path.join(mosaicdir, f) for f in os.listdir(mosaicdir)
                    if f.endswith('.tif')]
     cell_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
@@ -60,10 +61,10 @@ def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
     sum_raster_name = os.path.join(sumdir, 'sum.tif')
     if not os.path.isfile(sum_raster_name):
         sum_rasters(raster_list, sum_raster_name, cell_size)
-    
+
     # average annual precip within properties
     # calculate_zonal_averages([sum_raster_name], zonal_shp, save_as)
-    
+
     # average annual precip at property centroids
     tempdir = tempfile.mkdtemp()
     point_shp = os.path.join(tempdir, 'centroid.shp')
@@ -81,17 +82,17 @@ def calculate_total_annual_precip(raster_dir, zonal_shp, save_as):
             ann_precip_dict['avg_annual_precip'].append(row[1])
     temp_df = pd.DataFrame.from_dict(ann_precip_dict)
     temp_df.to_csv(save_as, index=False)
-    
+
 def calculate_zonal_averages(raster_list, zonal_shp, save_as):
     """Calculate averages of the rasters in raster_list within zones
     identified by the zonal_shp.  Store averages in table with a row for
     each zone, identified by the file path save_as."""
-    
+
     tempdir = tempfile.mkdtemp()
     zonal_raster = os.path.join(tempdir, 'zonal_raster.tif')
     field = "FID"
     # arcpy.FeatureToRaster_conversion(zonal_shp, field, zonal_raster)
-    
+
     # outdir = tempfile.mkdtemp()
     # arcpy.BuildRasterAttributeTable_management(zonal_raster)
     # for raster in raster_list:
@@ -123,7 +124,7 @@ def calculate_zonal_averages(raster_list, zonal_shp, save_as):
     sum_df['zone'] = sum_df[[-1]]
     sum_df = sum_df.drop(remove_cols, axis=1)
     sum_df.to_csv(save_as, index=False)
-    
+
     try:
         shutil.rmtree(tempdir)
         shutil.rmtree(outdir)
@@ -133,9 +134,9 @@ def calculate_zonal_averages(raster_list, zonal_shp, save_as):
 
 def calc_soil_table(zonal_shp, save_as):
     """Make the table containing soil inputs for each property."""
-    
+
     arcpy.env.overwriteOutput = 1
-    
+
     soil_dir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\Laikipia_soil_250m\averaged"
     raster_list = [os.path.join(soil_dir, f) for f in os.listdir(soil_dir)]
     calculate_zonal_averages(raster_list, zonal_shp, save_as)
@@ -143,7 +144,7 @@ def calc_soil_table(zonal_shp, save_as):
 def join_site_lat_long(zonal_shp, soil_table):
     """Calculate latitude and longitude of the centroid of each property and
     join it to the soil table to be used as input for site.100 file."""
-    
+
     soil_df = pd.read_csv(soil_table).set_index("zone")
     soil_df["latitude"] = "NA"
     soil_df["longitude"] = "NA"
@@ -158,7 +159,7 @@ def join_site_lat_long(zonal_shp, soil_table):
             soil_df = soil_df.set_value([row[0]], 'longitude', row[1])
             soil_df = soil_df.set_value([row[0]], 'latitude', row[2])
     soil_df.to_csv(soil_table)
-    
+
     try:
         shutil.rmtree(tempdir)
     except:
@@ -167,19 +168,19 @@ def join_site_lat_long(zonal_shp, soil_table):
 
 def write_soil_table(site_shp, soil_dir, save_as):
     """Make soil table to use as input for site files"""
-    
+
     # make a temporary copy of the point shapefile to append worldclim values
     tempdir = tempfile.mkdtemp()
     source_shp = site_shp
     site_shp = os.path.join(tempdir, 'points.shp')
     arcpy.Copy_management(source_shp, site_shp)
-        
+
     rasters = [f for f in os.listdir(soil_dir) if f.endswith('.tif')]
     field_list = [r[:6] for r in rasters]
     raster_files = [os.path.join(soil_dir, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(site_shp, ex_list)
-    
+
     # read from shapefile to new table
     field_list.insert(0, 'site_id')
     temp_dict = {field: [] for field in field_list}
@@ -203,7 +204,7 @@ def write_soil_table(site_shp, soil_dir, save_as):
 
 def count_missing_values_namem(namem_precip, namem_temp):
     """How many missing values in NAMEM data for each soum center?"""
-    
+
     temp_df = pd.read_csv(namem_temp)
     prec_df = pd.read_csv(namem_precip)
     namem_df = pd.merge(prec_df, temp_df, how='outer')
@@ -234,12 +235,12 @@ def count_missing_values_namem(namem_precip, namem_temp):
     df = pd.DataFrame(missing_dict)
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\NAMEM\missing_records.csv"
     df.to_csv(save_as)
-    
+
 def namem_to_wth(namem_precip, namem_temp, input_folder, wc_temp=None,
                  site_match_csv=None):
     """Write weather files from namem records.  If worldclim temp is included,
     get temperature records from worldclim."""
-    
+
     temp_df = pd.read_csv(namem_temp)
     prec_df = pd.read_csv(namem_precip)
     if wc_temp:
@@ -294,7 +295,7 @@ def namem_to_wth(namem_precip, namem_temp, input_folder, wc_temp=None,
         df = pd.DataFrame(trans_dict)
         cols = df.columns.tolist()
         cols = cols[-2:-1] + cols[-1:] + cols[:-2]
-        df = df[cols]        
+        df = df[cols]
         df['sort_col'] = df['year']
         df.loc[(df['label'] == 'prec'), 'sort_col'] = df.sort_col + 0.1
         df.loc[(df['label'] == 'tmin'), 'sort_col'] = df.sort_col + 0.2
@@ -304,12 +305,12 @@ def namem_to_wth(namem_precip, namem_temp, input_folder, wc_temp=None,
         formats = ['%4s', '%6s'] + ['%7.2f'] * 12
         save_as = os.path.join(input_folder, '{}.wth'.format(site))
         np.savetxt(save_as, df.values, fmt=formats, delimiter='')
-                
+
 def write_site_files_mongolia(template, soil_table, save_dir):
     """Write the site.100 file; inspired by previous version of this function
     but made to work on soil table calculated from Boogie's database. (or from
     ISRIC soil grids)"""
-    
+
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
     in_list = pd.read_csv(soil_table).to_dict(orient="records")
@@ -356,11 +357,11 @@ def write_site_files_mongolia(template, soil_table, save_dir):
         os.remove(abs_path)
         # generate weather statistics with worldclim_to_site_file() or
         # wth_to_site_file
-    
+
 def write_site_files(template, soil_table, save_dir):
     """Write the site.100 file for each property, using the "zone" field in the
     soil table as identifier for each property."""
-    
+
     in_list = pd.read_csv(soil_table).to_dict(orient="records")
     for inputs_dict in in_list:
         fh, abs_path = mkstemp()
@@ -409,7 +410,7 @@ def write_site_files(template, soil_table, save_dir):
 def make_sch_files_mongolia(soil_table, template_hist, template_sch,
                             save_dir, site_wth_match_file=None):
     """Custom function inspired by make_sch_files() but for Mongolia inputs."""
-    
+
     def copy_sch_file(template, site_name, save_as, wth_file=None):
         fh, abs_path = mkstemp()
         os.close(fh)
@@ -431,7 +432,7 @@ def make_sch_files_mongolia(soil_table, template_hist, template_sch,
                         newfile.write('{}Site file name\r\n'.format(item))
                     else:
                         newfile.write(line)
-                    
+
         shutil.copyfile(abs_path, save_as)
         os.remove(abs_path)
 
@@ -450,11 +451,11 @@ def make_sch_files_mongolia(soil_table, template_hist, template_sch,
         copy_sch_file(template_sch, site, save_as, wth_file=wth)
         save_as = os.path.join(save_dir, '{}_hist.sch'.format(site))
         copy_sch_file(template_hist, site, save_as)
-        
+
 def make_sch_files(template_hist, template_extend, soil_table, save_dir):
     """Write the schedule files (hist and extend) to run each site, using the
     "zone" field in the soil table as identifier and name for each property."""
-    
+
     def copy_sch_file(template, site_name, weather_file, save_as):
         fh, abs_path = mkstemp()
         os.close(fh)
@@ -482,7 +483,7 @@ def make_sch_files(template_hist, template_extend, soil_table, save_dir):
 
 def clip_rasters_arcpy(rasters_folder, clipped_folder, aoi_shp, endswith):
     """Clip large rasters to an aoi using arcpy instead of gdal."""
-    
+
     to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
     raster_nodata = 9999
     for r in to_clip:
@@ -490,11 +491,11 @@ def clip_rasters_arcpy(rasters_folder, clipped_folder, aoi_shp, endswith):
         outExtractByMask = arcpy.sa.ExtractByMask(bil, aoi_shp)
         clipped_raster_uri = os.path.join(clipped_folder, r)
         outExtractByMask.save(clipped_raster_uri)
-    
+
 def clip_rasters(rasters_folder, clipped_folder, aoi_shp, endswith):
     """Clip large rasters to an aoi to speed up later processing. Rasters are
     identified as files within the rasters_folder that end with 'endswith'."""
-    
+
     to_clip = [f for f in os.listdir(rasters_folder) if f.endswith(endswith)]
     raster_nodata = 9999
     out_pixel_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(
@@ -512,7 +513,7 @@ def clip_rasters(rasters_folder, clipped_folder, aoi_shp, endswith):
 def GSOM_table_to_input():
     """Convert Global Summary of the Month data tables containing precip and
     temperature to inputs for Century."""
-    
+
     # GSOM_file = "C:/Users/Ginger/Dropbox/NatCap_backup/Forage_model/Data/Western_US/Kingsville_GSOM_1981_2016.csv"
     GSOM_file = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\data\Ucross\Ucross_GSOM_1980_2016.csv"
     save_as = "C:/Users/Ginger/Desktop/ucross_tripled.wth"  ## GSOM_file[:-4] + '.wth'
@@ -523,14 +524,14 @@ def GSOM_table_to_input():
     gsom_df['month'] = [int(gsom_df.iloc[r].DATE.split('-')[1]) for r in
                         range(len(gsom_df.DATE))]
     gsom_df['prec'] = gsom_df.PRCP * 3.
-    
+
     # fill missing values with average values across years within months
     year_list = gsom_df['year'].unique().tolist()
     year_list = range(min(year_list), max(year_list) + 1)
     grouped = gsom_df.groupby('month')
     for year in year_list:
         for mon in range(1, 13):
-            sub_df = gsom_df.loc[(gsom_df['month'] == mon) & 
+            sub_df = gsom_df.loc[(gsom_df['month'] == mon) &
                                  (gsom_df['year'] == year)]
             if len(sub_df) == 0:
                 placeholder = pd.DataFrame({'month': [mon],
@@ -560,7 +561,7 @@ def GSOM_table_to_input():
     df = pd.DataFrame(trans_dict)
     cols = df.columns.tolist()
     cols = cols[-2:-1] + cols[-1:] + cols[:-2]
-    df = df[cols]        
+    df = df[cols]
     df['sort_col'] = df['year']
     df.loc[(df['label'] == 'prec'), 'sort_col'] = df.sort_col + 0.1
     df.loc[(df['label'] == 'tmin'), 'sort_col'] = df.sort_col + 0.2
@@ -573,7 +574,7 @@ def GSOM_table_to_input():
 def wth_to_site_100(wth_file, site_template, save_as):
     """Calculate average weather statistics from a .wth file and write those to
     a site.100 file"""
-    
+
     wth_dat = pd.read_fwf(wth_file, header=None)
     precip = wth_dat[wth_dat[0] == 'prec']
     mean_precip = precip.iloc[:, 2:14].mean(axis=0)
@@ -605,12 +606,12 @@ def wth_to_site_100(wth_file, site_template, save_as):
                     break
     shutil.copyfile(abs_path, save_as)
     os.remove(abs_path)
-                    
+
 def clim_tables_to_inputs(prec_table, temp_table, input_folder):
-    """Convert tables with monthly precipitation values (generated by the 
+    """Convert tables with monthly precipitation values (generated by the
     function process_FEWS_files) and a table with monthly temp values
     generated with process_worldclim to input files for CENTURY."""
-    
+
     temp_df = pd.read_csv(temp_table)
     prec_df = pd.read_csv(prec_table)
     if 'year' in prec_df.columns.values:
@@ -658,7 +659,7 @@ def remove_wth_from_sch(input_dir):
     """To run the simulation with worldclim precipitation, must remove the
     reference to empirical weather and use just the averages in the site.100
     file."""
-    
+
     sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
     sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
     sch_files = [os.path.join(input_dir, f) for f in sch_files]
@@ -683,7 +684,7 @@ def remove_grazing(input_dir, out_dir):
     calc management routine, so that they can be supplied as inputs to run
     the simulation.  Grazing events are removed from the years 2014 and 2015,
     and the block schedule here is assumed to start with 2011."""
-    
+
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
@@ -708,18 +709,18 @@ def remove_grazing(input_dir, out_dir):
         new_sch = os.path.join(out_dir, os.path.basename(sch))
         shutil.copyfile(abs_path, new_sch)
         os.remove(abs_path)
-            
+
 def process_worldclim_temp(worldclim_folder, save_as, zonal_shp=None,
                            point_shp=None):
     """Make a table of max and min monthly temperature for points which are the
     centroids of properties (features in zonal_shp, if supplied) or the points
     in point_shp, if supplied, from worldclim rasters."""
-    
+
     tempdir = tempfile.mkdtemp()
-    
+
     if zonal_shp and point_shp:
         raise ValueError("Only one of point or polygon layers may be supplied")
-        
+
     if point_shp:
         # make a temporary copy of the point shapefile to append worldclim values
         source_shp = point_shp
@@ -729,17 +730,17 @@ def process_worldclim_temp(worldclim_folder, save_as, zonal_shp=None,
         # make property centroid shapefile to extract values to points
         point_shp = os.path.join(tempdir, 'centroid.shp')
         arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
-    
+
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
     field_list = [r[10:17] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
-    
+
     # read from shapefile to newly formatted table
     field_list.insert(0, 'site_id')
-    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack 
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     temp_dict = {'site': [], 'month': [], 'tmin': [], 'tmax': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -766,12 +767,12 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
     """Make a table of monthly precip for points which are the
     centroids of properties (features in zonal_shp, if supplied) or the points
     in point_shp, if supplied, from worldclim rasters"""
-    
+
     tempdir = tempfile.mkdtemp()
-    
+
     if zonal_shp and point_shp:
         raise ValueError("Only one of point or polygon layers may be supplied")
-        
+
     if point_shp:
         # make a temporary copy of the point shapefile to append worldclim values
         source_shp = point_shp
@@ -781,7 +782,7 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
         # make property centroid shapefile to extract values to points
         point_shp = os.path.join(tempdir, 'centroid.shp')
         arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
-    
+
     # extract monthly values to each point
     rasters = [f for f in os.listdir(worldclim_folder) if f.endswith('.tif')]
     # field_list = [r[11:12] if r[12] == '.' else r[11:13] for r in rasters]  # [r[:5] if r[5] == '_' else r[:6] for r in rasters]  # [r[10:17] for r in rasters]
@@ -789,10 +790,10 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
     raster_files = [os.path.join(worldclim_folder, f) for f in rasters]
     ex_list = zip(raster_files, field_list)
     arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
-    
+
     # read from shapefile to newly formatted table
     field_list.insert(0, 'site_id')
-    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack 
+    month_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # [1, 10, 11, 12, 2, 3, 4, 5, 6, 7, 8, 9]  # totally lazy hack
     prec_dict = {'site': [], 'month': [], 'prec': []}
     with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
         for row in cursor:
@@ -804,24 +805,24 @@ def process_worldclim_precip(worldclim_folder, save_as, zonal_shp=None,
                 prec_dict['prec'].append(row[f_idx])
             prec_dict['month'].extend(month_list)
     prec_df = pd.DataFrame.from_dict(prec_dict)
-    prec_df.to_csv(save_as, index=False)    
+    prec_df.to_csv(save_as, index=False)
 
 def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
     """Calculate precipitation at property centroids from FEWS RFE (rainfall
     estimate) rasters.  The zonal_shp shapefile should be properties."""
-    
+
     # the files give dekadal (10-day) estimates, with the filename format
     # 'ea15011.bil' for the 1st period of the first month of year 2015,
     # 'ea08121.bil' for the 1st period of the 12th month of year 2008, etc
-    
+
     # tempdir = tempfile.mkdtemp() todo remove
     # tempdir = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\FEWS_RFE_sum"
-    
+
     # make property centroid shapefile to extract values to points
     # point_shp = os.path.join(outdir, 'centroid.shp')
     point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016_Mpala_split_centroid.shp"
     # arcpy.FeatureToPoint_management(zonal_shp, point_shp, "CENTROID")
-    
+
     def sum_rasters(raster_list, save_as, cell_size):
         def sum_op(*rasters):
             return np.sum(np.array(rasters), axis=0)
@@ -831,9 +832,9 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
                 gdal.GDT_UInt16, nodata, cell_size, "union",
                 dataset_to_align_index=0, assert_datasets_projected=False,
                 vectorize_op=False, datasets_are_pre_aligned=True)
-        
+
     # bil_files = [f for f in os.listdir(FEWS_folder) if f.endswith(".bil")]
-    
+
     # set nodata value
     # for f in bil_files:
         # raster = os.path.join(FEWS_folder, f)
@@ -843,7 +844,7 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
         # source_ds = None
     # template = raster = os.path.join(FEWS_folder, bil_files[0])
     # cell_size = pygeoprocessing.geoprocessing.get_cell_size_from_uri(template)
-    
+
     # calculate monthly values from dekadal (10-day) estimates
     # field_list = ['FID']
     # ex_list = []
@@ -853,19 +854,19 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
                 # continue
             # raster_list = [os.path.join(FEWS_folder,
                                         # 'ea{:0>2}{:0>2}{}.bil'.format(
-                                        # year, month, i)) for i in range(1, 4)]            
+                                        # year, month, i)) for i in range(1, 4)]
             # save_as = os.path.join(tempdir, '{}_{}.tif'.format(month, year))
             # sum_rasters(raster_list, save_as, cell_size)
             # field_name = 'RFE_{:0>2}_{:0>2}'.format(month, year)
             # field_list.append(field_name)
             # ex_list.append([save_as, field_name])
-    
+
     sum_folder = FEWS_folder
     monthly_rasters = [f for f in os.listdir(sum_folder) if f.endswith(".tif")]
     ex_list = [[os.path.join(sum_folder, path), path]
                 for path in monthly_rasters]
     field_list = [f[:-4] for f in monthly_rasters]
-    
+
     # extract monthly values to each point
     # arcpy.sa.ExtractMultiValuesToPoints(point_shp, ex_list)
 
@@ -891,11 +892,11 @@ def process_FEWS_files(FEWS_folder, zonal_shp, prec_table):
 def generate_grass_csvs(template, input_dir):
     """Make input csvs describing grass for input to the forage model. Copy a
     template, using names taken from schedule files in the input_dir."""
-    
+
     sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
     sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
     site_list = [f[:-4] for f in sch_files]
-    
+
     template_df = pd.read_csv(template)
     for site in site_list:
         new_df = template_df.copy()
@@ -905,18 +906,18 @@ def generate_grass_csvs(template, input_dir):
 
 def generate_site_csv(input_dir, save_as):
     """Generate a csv that can be used to direct inputs to run the model."""
-    
+
     def get_latitude(site_file):
         with open(site_file, 'r') as read_file:
             for line in read_file:
                 if 'SITLAT' in line:
                     lat = line[:8].strip()
         return lat
-                
+
     sch_files = [f for f in os.listdir(input_dir) if f.endswith('.sch')]
     sch_files = [f for f in sch_files if not f.endswith('hist.sch')]
     site_list = [f[:-4] for f in sch_files]
-    
+
     site_dict = {'name': [], 'lat': []}
     for site in site_list:
         site_file = os.path.join(input_dir, '{}.100'.format(site))
@@ -930,7 +931,7 @@ def generate_site_csv(input_dir, save_as):
 def get_site_weather_files(schedule_file, input_dir):
     """Read filename of weather file from schedule file supplied to
     CENTURY."""
-    
+
     w_file = 'NA'
     with open(schedule_file, 'r') as read_file:
         for line in read_file:
@@ -942,13 +943,13 @@ def get_site_weather_files(schedule_file, input_dir):
                     w_name = re.search('(.+?).wth', line).group(1) + '.wth'
                     w_file = os.path.join(input_dir, w_name)
     return w_file
-    
+
 def wth_to_site_file(soil_table, input_dir):
     """Generate weather statistics from the wth file specified in the .sch
     file, save to site file. Identify site and sch files from the soil_table
     and assume that the site.100, .sch files and .wth files are in the same
     directory, input_dir."""
-    
+
     site_df = pd.read_csv(soil_table)
     for site in site_df.site_id.unique().tolist():
         schedule_file = os.path.join(input_dir, '{}.sch'.format(site))
@@ -1001,7 +1002,7 @@ def worldclim_to_site_file(wc_precip, wc_temp, site_file_dir):
     """Write Worldclim averages into existing site files."""
 
     # I divided worldclim precip by 10 (mm to cm) by hand
-    
+
     prec_df = pd.read_csv(wc_precip)
     temp_df = pd.read_csv(wc_temp)
     for site in prec_df.site.unique().tolist():
@@ -1056,12 +1057,12 @@ def EO_to_wth(soil_table, EO_csv, year_reg, col_format, wc_temp, wc_prec,
     filling in temperature data from worldclim.  Save them in the directory
     save_dir.  The string 'col_format' describes where year and month fall
     within a column heading containing data."""
-    
+
     temp_df = pd.read_csv(wc_temp)
     prec_df = pd.read_csv(wc_prec)
     EO_df = pd.read_csv(EO_csv).set_index("site_id")
     EO_col = [c for c in EO_df.columns.values.tolist() if
-              c.startswith(col_format[:4])] 
+              c.startswith(col_format[:4])]
     EO_df = EO_df[EO_col]
     year_list = []
     for col in EO_col:
@@ -1102,21 +1103,193 @@ def EO_to_wth(soil_table, EO_csv, year_reg, col_format, wc_temp, wc_prec,
         df = pd.DataFrame(trans_dict)
         cols = df.columns.tolist()
         cols = cols[-2:-1] + cols[-1:] + cols[:-2]
-        df = df[cols]   
+        df = df[cols]
         df['sort_col'] = df['year']
         df.loc[(df['label'] == 'prec'), 'sort_col'] = df.sort_col + 0.1
         df.loc[(df['label'] == 'tmin'), 'sort_col'] = df.sort_col + 0.2
         df.loc[(df['label'] == 'tmax'), 'sort_col'] = df.sort_col + 0.3
         df = df.sort_values(by='sort_col')
-        df = df.drop('sort_col', 1)        
+        df = df.drop('sort_col', 1)
         formats = ['%4s', '%6s'] + ['%7.2f'] * 12
         save_as = os.path.join(save_dir, '{}.wth'.format(site))
         np.savetxt(save_as, df.values, fmt=formats, delimiter='')
 
+
+def site_file_to_precip_df(site_file):
+    """Read precipitation from a site file and return a dataframe."""
+    month_regex = re.compile(r'PRECIP\((.+)\)')
+    precip_dict = {'month': [], 'precip': []}
+    with open(site_file, 'rb') as old_file:
+        for line in old_file:
+            if 'PRECIP(' in line:
+                month = int(month_regex.search(line).group(1))
+                precip = float(line[:8].strip())
+                precip_dict['month'].append(month)
+                precip_dict['precip'].append(precip)
+    precip_df = pd.DataFrame(precip_dict)
+    return precip_df
+
+
+def precip_df_to_site_file(precip_df, site_file, save_as):
+    """Replace precipitation in a site file from an edited dataframe.
+
+    Parameters:
+        precip_df (dataframe): precipitation that should be added to the
+            site file
+        site_file (string): path to template site file that should be edited
+        save_as (string): path to save new edited site file
+
+    Returns:
+        none
+    """
+    month_regex = re.compile(r'PRECIP\((.+)\)')
+    fh, abs_path = mkstemp()
+    os.close(fh)
+    with open(abs_path, 'wb') as newfile:
+        with open(site_file, 'rb') as old_file:
+            for line in old_file:
+                if 'PRECIP(' in line:
+                    month = int(month_regex.search(line).group(1))
+                    precip = float(
+                        precip_df.loc[precip_df.month == month, 'precip'])
+                    line = '{:<7.4f}           \'PRECIP({})\'\r\n'.format(
+                        precip, month)
+                newfile.write(line)
+    shutil.copyfile(abs_path, save_as)
+    os.remove(abs_path)
+
+
+def copy_non_site_files(input_dir, save_dir):
+    """Copy all inputs other than site files from input_dir to save_dir."""
+    files_to_move = [
+        f for f in os.listdir(input_dir) if not f.endswith('.100')]
+    for file in files_to_move:
+        source_path = os.path.join(input_dir, file)
+        destination_path = os.path.join(save_dir, file)
+        shutil.copyfile(source_path, destination_path)
+
+
+def measure_achieved_perturbation():
+    """compare intended to achieved perturbation of rainfall."""
+    def calc_pci(precip_values):
+        return sum([p**2 for p in precip_values]) / (sum(precip_values)**2)
+
+    site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\regional_properties.csv"
+    input_dir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\empty_2014_2015"
+    outer_outdir = r"C:\Users\ginge\Documents\NatCap\model_inputs_Kenya\regional_precip_perturbations"
+    change_perc_series = [
+        -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
+
+    sum_dict = {
+        'site': [], 'tot_precip': [], 'totp_perc_change': [],
+        'pci_intended_perc_change': [], 'pci': []}
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    for mean_change_perc in change_perc_series:
+        for pci_change_perc in change_perc_series:
+            save_dir = os.path.join(
+                outer_outdir, 'total_precip_{}_PCI_{}'.format(
+                    mean_change_perc, pci_change_perc))
+            for site in site_list:
+                site_file = os.path.join(
+                    input_dir, '{}.100'.format(int(site['name'])))
+                orig_precip_df = site_file_to_precip_df(site_file)
+                orig_pci = calc_pci(orig_precip_df.precip)
+                edited_site_file = os.path.join(
+                    save_dir, '{}.100'.format(int(site['name'])))
+                edited_precip_df = site_file_to_precip_df(edited_site_file)
+                edited_pci = calc_pci(edited_precip_df.precip)
+
+                sum_dict['site'].append(site['name'])
+                sum_dict['tot_precip'].append(sum(edited_precip_df.precip))
+                sum_dict['totp_perc_change'].append(mean_change_perc)
+                sum_dict['pci_intended_perc_change'].append(
+                    pci_change_perc)
+                sum_dict['pci'].append(edited_pci)
+    sum_df = pd.DataFrame(sum_dict)
+    sum_df.to_csv(os.path.join(outer_outdir, 'precip_perturbations.csv'))
+
+
+def laikipia_precip_experiment_workflow():
+    """Generate inputs for regional properties with perturbed precip."""
+    def edit_PCI(precip_df, change_perc):
+        """Edit rainfall values to a series with greater or smaller PCI."""
+        def calc_pci(precip_values):
+            return sum([p**2 for p in precip_values]) / (sum(precip_values)**2)
+
+        initial_pci = calc_pci(precip_df.precip)
+        target_pci = initial_pci + change_perc * initial_pci
+        observed_diff = target_pci - initial_pci
+        edited_df = precip_df.copy()
+        num_tries = 0
+        while abs(observed_diff) > 0.001:
+            if num_tries > 600:
+                break
+            edited_df['precip_rank'] = edited_df['precip'].rank(method='first')
+            if observed_diff > 0:  # add precip to high precip month
+                high_precip_month_rank = random.choice([11., 12.])
+                low_precip_month_rank = random.choice(range(1, 11))
+                change_amt = (edited_df.loc[
+                    edited_df.precip_rank == low_precip_month_rank,
+                    'precip'].values * 0.4)
+                edited_df.loc[
+                    edited_df.precip_rank == high_precip_month_rank,
+                    'precip'] += change_amt
+                edited_df.loc[
+                    edited_df.precip_rank == low_precip_month_rank,
+                    'precip'] -= change_amt
+            else:  # add precip to low precip month
+                high_precip_month_rank = random.choice(range(7, 13))
+                low_precip_month_rank = random.choice(range(1, 7))
+                change_amt = (edited_df.loc[
+                    edited_df.precip_rank == high_precip_month_rank,
+                    'precip'].values * 0.05)
+                edited_df.loc[
+                    edited_df.precip_rank == high_precip_month_rank,
+                    'precip'] -= change_amt
+                edited_df.loc[
+                    edited_df.precip_rank == low_precip_month_rank,
+                    'precip'] += change_amt
+            edited_pci = calc_pci(edited_df.precip)
+            observed_diff = target_pci - edited_pci
+            num_tries += 1
+        return edited_df
+
+    # baseline (empirical) inputs
+    site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\regional_properties.csv"
+    input_dir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\Worldclim_precip\empty_2014_2015"
+    outer_outdir = r"C:\Users\ginge\Documents\NatCap\model_inputs_Kenya\regional_precip_perturbations"
+    change_perc_series = [
+        -0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    # edit inputs: higher, lower rainfall
+    for mean_change_perc in change_perc_series:
+        # increase, decrease precip concentration index
+        for pci_change_perc in change_perc_series:
+            save_dir = os.path.join(
+                outer_outdir, 'total_precip_{}_PCI_{}'.format(
+                    mean_change_perc, pci_change_perc))
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+            for site in site_list:
+                site_file = os.path.join(
+                    input_dir, '{}.100'.format(int(site['name'])))
+                precip_df = site_file_to_precip_df(site_file)
+                precip_df.precip += precip_df.precip * mean_change_perc
+                if pci_change_perc == 0:
+                    edited_precip_df = precip_df.copy()
+                else:
+                    edited_precip_df = edit_PCI(precip_df, pci_change_perc)
+                edited_site_file = os.path.join(
+                    save_dir, '{}.100'.format(int(site['name'])))
+                precip_df_to_site_file(
+                    edited_precip_df, site_file, edited_site_file)
+                copy_non_site_files(input_dir, save_dir)
+
+
 def laikipia_regional_properties_workflow():
     """Nasty list of datasets and functions performed to process inputs for
     regional properties in Laikipia"""
-    
+
     zonal_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016.shp"
     soil_table = r"C:\Users\Ginger\Desktop\Soil_avg.csv"
     # calc_soil_table(zonal_shp, soil_table)
@@ -1151,17 +1324,17 @@ def laikipia_regional_properties_workflow():
     # remove_grazing(input_dir, out_dir)
     save_as = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\regional_average_temp_centroid.csv"
     # calculate_total_annual_precip(worldclim_precip_folder, zonal_shp, save_as)
- 
+
 def mongolia_workflow():
     """Generate climate inputs to run the model at Boogie's monitoring points
     for sustainable cashmere."""
-    
+
     worldclim_tmax_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmax"
     worldclim_tmin_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_tmin"
     worldclim_precip_folder = r"E:\GIS_archive\General_useful_data\Worldclim_2.0\worldclim_precip"
     clipped_outer_folder = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\Worldclim"
     bounding_aoi = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\monitoring_boundary.shp"
-    
+
     # clip_rasters_arcpy(worldclim_tmax_folder,
                  # os.path.join(clipped_outer_folder, 'tmax'),
                  # bounding_aoi, '.tif')
@@ -1171,7 +1344,7 @@ def mongolia_workflow():
     # clip_rasters_arcpy(worldclim_precip_folder,
                  # os.path.join(clipped_outer_folder, 'precip'),
                  # bounding_aoi, '.tif')  # TODO both tmin and tmax should go into a folder called "temp"
-    
+
     # point_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\From_Boogie\shapes\GK_reanalysis\CBM_SCP_sites.shp"
     point_shp = "C:/Users/Ginger/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_2_soums.shp"
     wc_temp = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\data\climate\Worldclim\soum_ctrs_temp.csv"
@@ -1231,13 +1404,13 @@ def mongolia_workflow():
     # make a point shapefile that is every pixel of a CHIRPS raster
     raster_source = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\CHIRPS\chirps-v2.0.1998.01_ex.tif"
     point_destination = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Mongolia\CHIRPS_pixel_centroid.shp"
-    # rtp.raster_to_point_vector(raster_source, point_destination)  
-     
+    # rtp.raster_to_point_vector(raster_source, point_destination)
+
     # count_missing_values_namem(namem_precip, namem_temp)
-    
+
 def ucross_workflow():
     """generate climate inputs with doubled precip"""
-    
+
     GSOM_table_to_input()
     wth_file = "C:/Users/Ginger/Desktop/ucross_tripled.wth"
     site_template = r"C:\Users\Ginger\Dropbox\NatCap_backup\WitW\model_inputs\Ucross\ucross.100"
@@ -1247,12 +1420,13 @@ def ucross_workflow():
 def precip_data_for_Felicia():
     """Data task for Felicia 3.13.18: annual rainfall from FEWS from property
     ceontroids, including Mpala Ranch, Research, and combined"""
-    
+
     zonal_shp = r"C:\Users\Ginger\Documents\NatCap\GIS_local\Kenya_forage\regional_properties_Jul_8_2016_Mpala_split.shp"
     FEWS_folder = r"E:\GIS_archive\Kenya_ticks\FEWS_RFE_sum"
     prec_table = r"C:\Users\Ginger\Dropbox\NatCap_backup\Forage_model\Data\Kenya\Climate\regional_precip_2014_2015_FEWS_RFE.csv"
     process_FEWS_files(FEWS_folder, zonal_shp, prec_table)
-    
+
+
 if __name__ == "__main__":
-    precip_data_for_Felicia()
-    
+    laikipia_precip_experiment_workflow()
+    measure_achieved_perturbation()
