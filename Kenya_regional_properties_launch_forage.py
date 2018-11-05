@@ -180,6 +180,7 @@ def fill_dict(d_fill, fill_val):
 
 
 def combine_marg_df():
+    # outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
     outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
     existing_csv = [
         os.path.join(outer_outdir, f) for f in os.listdir(outer_outdir) if
@@ -249,21 +250,24 @@ def max_viable_density_rainfall_perturbations():
     # stuff to vary that controls the experiment
     # full change_perc_series:
     # [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
-    change_perc_series = [-0.8, -0.4, 0, 0.4, 0.8, 1.2]
+    change_perc_series = [0]  # [-0.8, -0.4, 0, 0.4, 0.8, 1.2]
     num_sites = 5
-    num_tries = 5
+    num_tries = 50
     # this dict specifies starting stocking density according to the percent
     # change in mean precip
     starting_density_dict = {
         -0.8: 0.1,
+        -0.6: 0.25,
         -0.4: 0.4,
         0: 1.1,
         0.4: 1.3,
+        0.6: 1.4,
         0.8: 1.5,
         1.2: 2.,
     }
     # site_subset = np.random.choice(len(site_list), num_sites)
-    site_subset = [0, 1, 2, 5, 9, 11, 12, 24, 18, 21]
+    # site_subset = [0, 1, 2, 5, 9, 11, 12, 24, 18, 21]  # 10 sites chosen to span range of back-calc densities
+    site_subset = [4, 14, 15, 16, 19, 22, 23, 8, 17]
     # ------------------------------------------------------------------------
     forage_args = default_forage_args()
     forage_args['herbivore_csv'] = template_herb_csv
@@ -277,97 +281,100 @@ def max_viable_density_rainfall_perturbations():
         existing_df = [pd.read_csv(csv) for csv in existing_csv]
         done_df = pd.concat(existing_df)
         done_df.drop_duplicates(inplace=True)
-        for mean_change_perc in change_perc_series:
-            for pci_change_perc in change_perc_series:
-                input_dir = os.path.join(
-                    outer_input_dir, 'total_precip_{}_PCI_{}'.format(
-                        mean_change_perc, pci_change_perc))
-                forage_args['input_dir'] = os.path.join(outer_input_dir, input_dir)
-                for site_index in site_subset:
-                    site = site_list[site_index]
-                    # find scenarios already run for this site
-                    site_df = done_df.loc[
-                        (done_df['site'] == site['name']) &
-                        (done_df['total_precip_perc_change'] ==
-                                    mean_change_perc) &
-                        (done_df['PCI_perc_change'] == pci_change_perc)]
-                    if len(site_df > 0):
-                        if min(site_df['density']) < 0.01:
-                            continue  # give up
-                        if (1 in site_df['num_months_insufficient'].values &
-                                2 in site_df['num_months_insufficient'].values):
-                            continue  # this combination is done
-                        if max(site_df['num_months_insufficient']) == 0:
-                            # start from the maximum density tested
-                            density = max(site_df['density'])
-                            num_months_insufficient = 0
-                        else:
-                            # start from density with smallest num months
-                            # insufficient
-                            pos_df = site_df.loc[
-                                site_df['num_months_insufficient'] > 0]
-                            num_months_insufficient = min(
-                                pos_df['num_months_insufficient'])
-                            density = pos_df.loc[
-                                pos_df['num_months_insufficient'] ==
-                                num_months_insufficient]['density']
-                            if len(density) > 1:
-                                density = max(density.values)
-                    else:  # no done runs for this combination yet
-                        density = starting_density_dict[mean_change_perc]
+        for mean_change_perc in [-0.6, 0.6]:  # change_perc_series:
+            pci_change_perc = 0
+            # for pci_change_perc in change_perc_series:
+            input_dir = os.path.join(
+                outer_input_dir, 'total_precip_{}_PCI_{}'.format(
+                    mean_change_perc, pci_change_perc))
+            forage_args['input_dir'] = os.path.join(outer_input_dir, input_dir)
+            for site_index in xrange(len(site_list)):  # site_subset:
+                site = site_list[site_index]
+                # find scenarios already run for this site
+                site_df = done_df.loc[
+                    (done_df['site'] == site['name']) &
+                    (done_df['total_precip_perc_change'] ==
+                                mean_change_perc) &
+                    (done_df['PCI_perc_change'] == pci_change_perc)]
+                if len(site_df > 0):
+                    if min(site_df['density']) < 0.00001:
+                        continue  # give up
+                    if (1 in site_df['num_months_insufficient'].values &
+                            2 in site_df['num_months_insufficient'].values):
+                        continue  # this combination is done
+                    if max(site_df['num_months_insufficient']) == 0:
+                        # start from the maximum density tested
+                        density = max(site_df['density'].values)
                         num_months_insufficient = 0
-                        calc_stocking_density(template_herb_csv, density)
-                    for i in xrange(num_tries + 1):
-                        if num_months_insufficient >= 2:
-                            if num_months_insufficient >= 10:
-                                density = density - density * 0.5
-                            else:
-                                density = density - density * 0.1
-                            calc_stocking_density(template_herb_csv, density)
-                        elif num_months_insufficient == 0:
-                            density = density + density * 0.25
-                            calc_stocking_density(template_herb_csv, density)
+                    else:
+                        # start from density with smallest num months
+                        # insufficient
+                        pos_df = site_df.loc[
+                            site_df['num_months_insufficient'] > 0]
+                        num_months_insufficient = min(
+                            pos_df['num_months_insufficient'])
+                        density = pos_df.loc[
+                            pos_df['num_months_insufficient'] ==
+                            num_months_insufficient]['density']
+                        if len(density) > 1:
+                            density = float(max(density.values))
                         else:
-                            continue
-                        outdir = os.path.join(
-                            outer_outdir, 'exp{}'.format(site['name']))
-                        if not os.path.exists(outdir):
-                            os.makedirs(outdir)
-                        grass_csv = os.path.join(
-                            outer_input_dir, input_dir,
-                            '{:d}.csv'.format(int(site['name'])))
-                        add_cp_to_grass_csv(grass_csv, target)
-                        forage_args['grass_csv'] = grass_csv
-                        forage_args['latitude'] = site['lat']
-                        forage_args['outdir'] = outdir
-                        sum_csv = os.path.join(outdir, 'summary_results.csv')
-                        forage.execute(forage_args)
-                        model_output = pd.read_csv(sum_csv)
-                        model_output['herd_avg_diet_sufficiency'] = 0
-                        for class_i in age_classes:
-                            class_proportion = herd_input.loc[
-                                herd_input['label'] == class_i, 'proportion_of_herd']
-                            energy_intake = model_output['{}MEItotal'.format(class_i)]
-                            energy_req = model_output['{}E_req'.format(class_i)]
-                            diet_sufficiency = (
-                                (energy_intake - energy_req) / energy_req)
-                            model_output['herd_avg_diet_sufficiency'] += (
-                                diet_sufficiency * class_proportion.values)
-                        num_months_insufficient = len(
-                            model_output[
-                                model_output['herd_avg_diet_sufficiency'] < 0])
-                        marg_dict['site'].append(site['name'])
-                        marg_dict['density'].append(density)
-                        marg_dict['total_precip_perc_change'].append(
-                            mean_change_perc)
-                        marg_dict['PCI_perc_change'].append(
-                            pci_change_perc)
-                        marg_dict['num_months_insufficient'].append(
-                            num_months_insufficient)
-                        try:
-                            shutil.rmtree(outdir)
-                        except WindowsError:
-                            pass
+                            density = float(density.values)
+                else:  # no done runs for this combination yet
+                    density = starting_density_dict[mean_change_perc]
+                    num_months_insufficient = 0
+                    calc_stocking_density(template_herb_csv, density)
+                for i in xrange(num_tries + 1):
+                    if num_months_insufficient >= 2:
+                        if num_months_insufficient >= 10:
+                            density = density - density * 0.35
+                        else:
+                            density = density - 0.0006
+                        calc_stocking_density(template_herb_csv, density)
+                    elif num_months_insufficient == 0:
+                        density = density + 0.0001
+                        calc_stocking_density(template_herb_csv, density)
+                    else:
+                        continue
+                    outdir = os.path.join(
+                        outer_outdir, 'exp{}'.format(site['name']))
+                    if not os.path.exists(outdir):
+                        os.makedirs(outdir)
+                    grass_csv = os.path.join(
+                        outer_input_dir, input_dir,
+                        '{:d}.csv'.format(int(site['name'])))
+                    add_cp_to_grass_csv(grass_csv, target)
+                    forage_args['grass_csv'] = grass_csv
+                    forage_args['latitude'] = site['lat']
+                    forage_args['outdir'] = outdir
+                    sum_csv = os.path.join(outdir, 'summary_results.csv')
+                    forage.execute(forage_args)
+                    model_output = pd.read_csv(sum_csv)
+                    model_output['herd_avg_diet_sufficiency'] = 0
+                    for class_i in age_classes:
+                        class_proportion = herd_input.loc[
+                            herd_input['label'] == class_i, 'proportion_of_herd']
+                        energy_intake = model_output['{}MEItotal'.format(class_i)]
+                        energy_req = model_output['{}E_req'.format(class_i)]
+                        diet_sufficiency = (
+                            (energy_intake - energy_req) / energy_req)
+                        model_output['herd_avg_diet_sufficiency'] += (
+                            diet_sufficiency * class_proportion.values)
+                    num_months_insufficient = len(
+                        model_output[
+                            model_output['herd_avg_diet_sufficiency'] < 0])
+                    marg_dict['site'].append(site['name'])
+                    marg_dict['density'].append(density)
+                    marg_dict['total_precip_perc_change'].append(
+                        mean_change_perc)
+                    marg_dict['PCI_perc_change'].append(
+                        pci_change_perc)
+                    marg_dict['num_months_insufficient'].append(
+                        num_months_insufficient)
+                    try:
+                        shutil.rmtree(outdir)
+                    except WindowsError:
+                        pass
     finally:
         filled_dict = fill_dict(marg_dict, 'NA')
         marg_df = pd.DataFrame(filled_dict)
@@ -1460,5 +1467,6 @@ def scenario_workflow():
 
 
 if __name__ == "__main__":
-    max_viable_density_rainfall_perturbations()
-    # combine_marg_df()
+    combine_marg_df()
+    # max_viable_density_rainfall_perturbations()
+
