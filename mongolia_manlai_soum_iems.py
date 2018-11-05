@@ -977,6 +977,12 @@ def animal_distribution(
         os.remove(minimum_val_raster)
         os.remove(maximum_val_raster)
 
+    def remove_highest_EO_value(EO_normalized):
+        """Hack: remove the highest-scoring EO pixel."""
+        result = EO_normalized
+        result[result == 1] = _TARGET_NODATA
+        return result
+
     def subtract_raster1_from_raster2(raster1, raster2):
         """Subtract raster1 from raster2."""
         valid_mask = (
@@ -1016,6 +1022,9 @@ def animal_distribution(
         result[valid_mask] = (raster1[valid_mask] * raster2[valid_mask])
         return result
 
+    if not os.path.exists(processing_dir):
+        os.makedirs(processing_dir)
+
     # normalize biomass
     modeled_normalized_path = os.path.join(
         processing_dir, 'normalized_biomass.tif')
@@ -1025,6 +1034,15 @@ def animal_distribution(
     EO_normalized_path = os.path.join(
         processing_dir, 'normalized_EO_index.tif')
     normalize_raster(EO_biomass_index_path, EO_normalized_path)
+
+    # remove highest EO pixel (hack, just for this application)
+    EO_normalized_prior_path = os.path.join(
+        processing_dir, 'EO_normalized_prior.tif')
+    shutil.copyfile(EO_normalized_path, EO_normalized_prior_path)
+    pygeoprocessing.raster_calculator(
+        [(path, 1) for path in [EO_normalized_prior_path]],
+        remove_highest_EO_value, EO_normalized_path,
+        gdal.GDT_Float32, _TARGET_NODATA)
 
     # translate modeled index to be >= EO index
     EO_minus_modeled_path = os.path.join(
@@ -1111,16 +1129,18 @@ def animal_distribution(
 def test_animal_distribution():
     model_biomass_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\aglivc.tif"
     total_animals = 224593.
-    processing_dir = r"C:\Users\ginge\Desktop\test_animal_distribution_dir"
+    processing_outerdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\iems_2018\animal_spatial_distribution"
 
     EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\NDVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
-    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution_NDVI.tif"
+    processing_dir = os.path.join(processing_outerdir, 'NDVI')
+    animal_distribution_path = os.path.join(processing_dir, 'animal_distribution.tif')
     animal_distribution(
         model_biomass_path, EO_biomass_index_path, total_animals,
         processing_dir, animal_distribution_path)
 
     EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\EVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
-    animal_distribution_path = r"C:\Users\ginge\Desktop\test_animal_distribution_dir\animal_distribution_EVI.tif"
+    processing_dir = os.path.join(processing_outerdir, 'EVI')
+    animal_distribution_path = os.path.join(processing_dir, 'animal_distribution.tif')
     animal_distribution(
         model_biomass_path, EO_biomass_index_path, total_animals,
         processing_dir, animal_distribution_path)
