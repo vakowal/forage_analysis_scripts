@@ -26,8 +26,8 @@ arcpy.CheckOutExtension("Spatial")
 
 SAMPLE_DATA = "C:/Users/ginge/Documents/NatCap/sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
-TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016_hist.sch"
-TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_start_2016.sch"
+TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1_hist.sch"
+TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1.sch"
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
 
 def convert_to_year_month(CENTURY_date):
@@ -56,16 +56,16 @@ def generate_base_args():
             'n_months': 22,
             'aoi_path': os.path.join(
                 SAMPLE_DATA, 'Manlai_soum.shp'),
-            'bulk_density_path': os.path.join(SAMPLE_DATA,
-                'soil', 'bulkd.tif'),
-            'ph_path': os.path.join(SAMPLE_DATA,
-                'soil', 'phihox_sl3.tif'),
-            'clay_proportion_path': os.path.join(SAMPLE_DATA,
-                'soil', 'clay.tif'),
-            'silt_proportion_path': os.path.join(SAMPLE_DATA,
-                'soil', 'silt.tif'),
-            'sand_proportion_path': os.path.join(SAMPLE_DATA,
-                'soil', 'sand.tif'),
+            'bulk_density_path': os.path.join(
+                SAMPLE_DATA, 'soil', 'bulkd.tif'),
+            'ph_path': os.path.join(
+                SAMPLE_DATA, 'soil', 'phihox_sl3.tif'),
+            'clay_proportion_path': os.path.join(
+                SAMPLE_DATA, 'soil', 'clay.tif'),
+            'silt_proportion_path': os.path.join(
+                SAMPLE_DATA, 'soil', 'silt.tif'),
+            'sand_proportion_path': os.path.join(
+                SAMPLE_DATA, 'soil', 'sand.tif'),
             'monthly_precip_path_pattern': os.path.join(
                 SAMPLE_DATA, 'CHIRPS_div_by_10',
                 'chirps-v2.0.<year>.<month>.tif'),
@@ -73,8 +73,8 @@ def generate_base_args():
                 SAMPLE_DATA, 'temp', 'wc2.0_30s_tmin_<month>.tif'),
             'max_temp_path_pattern': os.path.join(
                 SAMPLE_DATA, 'temp', 'wc2.0_30s_tmax_<month>.tif'),
-            'site_param_path': os.path.join(SAMPLE_DATA,
-                'site_parameters.csv'),
+            'site_param_path': os.path.join(
+                SAMPLE_DATA, 'site_parameters.csv'),
             'site_param_raster_path_pattern': os.path.join(
                 SAMPLE_DATA, 'site<site>.tif'),
             'veg_trait_path': os.path.join(SAMPLE_DATA, 'pft_trait.csv'),
@@ -769,22 +769,22 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                 crop_line = next(hist_sch)
                 crop_list.add(crop_line[:10].strip())
             if ' FRST' in line:
-                first_month.add(line[7:9].strip())
+                first_month.add(line[7:10].strip())
             if ' SENM' in line:
-                senescence_month.add(line[7:9].strip())
+                senescence_month.add(line[7:10].strip())
             if ' LAST' in line:
-                last_month.add(line[7:9].strip())
+                last_month.add(line[7:10].strip())
     with open(TEMPLATE_SCH, 'rb') as hist_sch:
         for line in hist_sch:
             if ' CROP' in line:
                 crop_line = next(hist_sch)
                 crop_list.add(crop_line[:10].strip())
             if ' FRST' in line:
-                first_month.add(line[7:9].strip())
+                first_month.add(line[7:10].strip())
             if ' SENM' in line:
-                senescence_month.add(line[7:9].strip())
+                senescence_month.add(line[7:10].strip())
             if ' LAST' in line:
-                last_month.add(line[7:9].strip())
+                last_month.add(line[7:10].strip())
     # ensure that crop (e.g. GCD_G) is same between hist and extend schedule
     assert len(crop_list) == 1, "We can only handle one PFT for old model"
     # ensure that the file contains only one schedule to begin and end
@@ -813,7 +813,22 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                 if label in parameters_to_keep:
                     value = float(line[:13].strip())
                     PFT_param_dict[label] = value
-
+    # get grazing effect parameters from graz.100 file
+    graz_file = os.path.join(CENTURY_DIR, 'graz.100')
+    with open(graz_file, 'rb') as grazparams:
+        for line in grazparams:
+            if line.startswith(old_model_inputs_dict['template_level']):
+                line = next(grazparams)
+                while 'FECLIG' not in line:
+                    label = re.sub(r"\'", "", line[13:].strip()).lower()
+                    if label in parameters_to_keep:
+                        value = float(line[:13].strip())
+                        PFT_param_dict[label] = value
+                    line = next(grazparams)
+                label = re.sub(r"\'", "", line[13:].strip()).lower()
+                if label in parameters_to_keep:
+                    value = float(line[:13].strip())
+                    PFT_param_dict[label] = value
     # get site parameters from TEMPLATE_100
     site_param_dict = {'site': 1}
     with open(TEMPLATE_100, 'rb') as siteparam:
@@ -832,7 +847,10 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
             label = re.sub(r"\'", "", line[13:].strip()).lower()
             if label in parameters_to_keep:
                 value = float(line[:13].strip())
-                site_param_dict[label] = value
+                if label == 'gremb':
+                    PFT_param_dict[label] = value
+                else:
+                    site_param_dict[label] = value
 
     def century_to_rp(century_label):
         rp = re.sub(r"\(", "_", century_label)
@@ -857,7 +875,6 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     site_df.to_csv(new_model_args['site_param_path'], index=False)
 
     # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
-    # and old_model_inputs_dict['template_level']
 
 def initial_variables_to_outvars():
     """Make new outvars file (the output variables collected by Century) for
@@ -983,5 +1000,5 @@ if __name__ == "__main__":
                                 old_model_processing_dir, old_model_input_dir)
 
     generate_inputs_for_new_model(old_model_inputs_dict)
-    generate_initialization_rasters()
+    # generate_initialization_rasters()
     # generate_regression_tests()

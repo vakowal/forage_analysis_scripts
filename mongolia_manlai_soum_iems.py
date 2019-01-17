@@ -9,7 +9,7 @@ import numpy
 from osgeo import ogr
 from osgeo import gdal
 import collections
-import taskgraph
+# import taskgraph
 # import arcpy
 import tempfile
 import shutil
@@ -1134,18 +1134,44 @@ def test_animal_distribution():
     EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\NDVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
     processing_dir = os.path.join(processing_outerdir, 'NDVI')
     animal_distribution_path = os.path.join(processing_dir, 'animal_distribution.tif')
-    animal_distribution(
-        model_biomass_path, EO_biomass_index_path, total_animals,
-        processing_dir, animal_distribution_path)
+    # animal_distribution(
+    #     model_biomass_path, EO_biomass_index_path, total_animals,
+    #     processing_dir, animal_distribution_path)
 
     EO_biomass_index_path = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\iems_2018\EVI_Manlai_extent_WGS84_rescale_reclassify_ex.tif"
     processing_dir = os.path.join(processing_outerdir, 'EVI')
     animal_distribution_path = os.path.join(processing_dir, 'animal_distribution.tif')
+    # animal_distribution(
+    #     model_biomass_path, EO_biomass_index_path, total_animals,
+    #     processing_dir, animal_distribution_path)
+
+    # AGU December 2018
+    model_biomass_path = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\iems_poster\AGU_poster\model_biomass.tif"
+    EO_biomass_index_path = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\iems_poster\AGU_poster\aveNDVI_Aug_georeference.tif"
+        # r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\iems_poster\AGU_poster\aveEVI2_Aug_georeference.tif"
+    processing_outerdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\iems_2018\animal_spatial_distribution"
+    aligned_dir = os.path.join(processing_outerdir, "aligned_inputs")
+    if not os.path.exists(aligned_dir):
+        os.makedirs(aligned_dir)
+    aligned_model_biomass = os.path.join(
+        aligned_dir, '{}.tif'.format(os.path.basename(model_biomass_path)))
+    aligned_EO = os.path.join(
+        aligned_dir, '{}.tif'.format(os.path.basename(EO_biomass_index_path)))
+    rasters_to_align = [model_biomass_path, EO_biomass_index_path]
+    aligned_rasters = [aligned_model_biomass, aligned_EO]
+    target_pixel_size = pygeoprocessing.get_raster_info(
+        model_biomass_path)['pixel_size']
+    pygeoprocessing.align_and_resize_raster_stack(
+        rasters_to_align, aligned_rasters,
+        ['near'] * len(rasters_to_align), target_pixel_size, 'intersection',
+        raster_align_index=0)
+
+    total_animals = 224593.
+    processing_dir = os.path.join(processing_outerdir, 'aveNDVI')  #'aveEVI2')
+    animal_distribution_path = os.path.join(processing_dir, 'animal_distribution.tif')
     animal_distribution(
-        model_biomass_path, EO_biomass_index_path, total_animals,
+        aligned_model_biomass, aligned_EO, total_animals,
         processing_dir, animal_distribution_path)
-
-
 
 
 if __name__ == "__main__":

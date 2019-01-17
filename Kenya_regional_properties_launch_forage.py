@@ -234,7 +234,8 @@ def max_viable_density_rainfall_perturbations():
     site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Kenya\input\regional_properties\regional_properties.csv"
     site_list = pd.read_csv(site_csv).to_dict(orient="records")
     outer_input_dir = r"C:\Users\ginge\Documents\NatCap\model_inputs_Kenya\regional_precip_perturbations"
-    outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
+    outer_outdir = r"C:/Users/ginge/Desktop/model_results_for_sarah"
+    # r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_results\regional_properties\precip_perturbations"
     conception_step = -4
     template_herb_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\Forage_model\model_inputs\Ol_pej_herd.csv"
     herd_input = pd.read_csv(template_herb_csv)
@@ -252,7 +253,7 @@ def max_viable_density_rainfall_perturbations():
     # [-0.8, -0.6, -0.4, -0.2, 0, 0.2, 0.4, 0.6, 0.8, 1, 1.2]
     change_perc_series = [0]  # [-0.8, -0.4, 0, 0.4, 0.8, 1.2]
     num_sites = 5
-    num_tries = 50
+    num_tries = 3  # 50
     # this dict specifies starting stocking density according to the percent
     # change in mean precip
     starting_density_dict = {
@@ -267,7 +268,7 @@ def max_viable_density_rainfall_perturbations():
     }
     # site_subset = np.random.choice(len(site_list), num_sites)
     # site_subset = [0, 1, 2, 5, 9, 11, 12, 24, 18, 21]  # 10 sites chosen to span range of back-calc densities
-    site_subset = [4, 14, 15, 16, 19, 22, 23, 8, 17]
+    site_subset = [4]  # [4, 14, 15, 16, 19, 22, 23, 8, 17]
     # ------------------------------------------------------------------------
     forage_args = default_forage_args()
     forage_args['herbivore_csv'] = template_herb_csv
@@ -1467,6 +1468,6 @@ def scenario_workflow():
 
 
 if __name__ == "__main__":
-    combine_marg_df()
-    # max_viable_density_rainfall_perturbations()
+    # combine_marg_df()
+    max_viable_density_rainfall_perturbations()
 

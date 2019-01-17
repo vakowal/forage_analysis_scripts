@@ -7,7 +7,7 @@ import shutil
 import pandas as pd
 import re
 sys.path.append(
- 'C:/Users/Ginger/Documents/Python/rangeland_production')
+ 'C:/Users/ginge/Documents/Python/rangeland_production')
 import forage_century_link_utils as cent
 
 def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
@@ -20,7 +20,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     2012.08 is January of 2012, etc. Two decimal points.  Template level is the
     grazing level in the graz.100 file that will be modified if intensity is
     modified."""
-    
+
     cent.set_century_directory(century_dir)
     empirical_biomass = site['biomass']
     empirical_date = site['date']
@@ -30,7 +30,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                                                           input_dir)
     graz_file = os.path.join(century_dir, "graz.100")
     output = site['name']  # + '_mod-manag'
-          
+
     # check that last block in schedule file includes >= n_months before
     # empirical_date
     cent.check_schedule(schedule_file, n_months, empirical_date)
@@ -50,7 +50,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     # make a copy of the original graz params and schedule file
     shutil.copyfile(graz_file, os.path.join(century_dir, 'graz_orig.100'))
     shutil.copyfile(schedule_file, os.path.join(input_dir, 'sch_orig.sch'))
-    
+
     spin_up_outputs = [site['name'] + '_hist_log.txt',
                        site['name'] + '_hist.lis']
     century_outputs = [output + '_log.txt', output + '.lis', output + '.bin']
@@ -67,7 +67,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
     run_schedule = os.path.join(century_dir, os.path.basename(e_schedule))
     os.remove(hist_bat)
     os.remove(extend_bat)
-    # run CENTURY for spin-up                           
+    # run CENTURY for spin-up
     hist_bat_run = os.path.join(century_dir, (site['name'] + '_hist.bat'))
     century_bat_run = os.path.join(century_dir, (site['name'] + '.bat'))
     cent.launch_CENTURY_subprocess(hist_bat_run)
@@ -91,7 +91,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
             for iter in xrange(max_iterations):
                 row = [iter]
                 row.append(empirical_biomass)
-                
+
                 # call CENTURY from the batch file
                 cent.launch_CENTURY_subprocess(century_bat_run)
 
@@ -122,7 +122,7 @@ def back_calculate_management(site, input_dir, century_dir, out_dir, fix_file,
                     raise Exception(er)
                 row.append(simulated_biomass)
                 writer.writerow(row)
-                
+
                 # check difference between simulated and empirical biomass
                 if float(abs(simulated_biomass - empirical_biomass)) <= \
                                                                      threshold:
@@ -203,7 +203,7 @@ def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
     """Summarize the grazing schedules that were calculated via the back-calc
     management regime.  Site_list is a list of sites identical to those used
     as inputs to the back-calc management routine."""
-    
+
     df_list = list()
     for site in site_list:
         site_name = site['name']
@@ -221,7 +221,7 @@ def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
             final_sch_iter = max(sch_iter_list)
             final_sch = os.path.join(site_dir, '{}_{}{}.sch'.format(site_name,
                                      site_name, final_sch_iter))
-        
+
         # read schedule file, collect months where grazing was scheduled
         schedule_df = cent.read_block_schedule(final_sch)
         for i in range(0, schedule_df.shape[0]):
@@ -242,16 +242,16 @@ def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
         first_abs_year = first_rel_year + start_year - 1
         # find months where grazing took place prior to empirical date
         graz_schedule = cent.read_graz_level(final_sch)
-        block = graz_schedule.loc[(graz_schedule["block_end_year"] == 
+        block = graz_schedule.loc[(graz_schedule["block_end_year"] ==
                                   last_year), ['relative_year', 'month',
                                   'grazing_level', 'year']]
         empirical_year = block.loc[(block['relative_year'] ==
-                                   relative_empirical_year) & 
+                                   relative_empirical_year) &
                                    (block['month'] <= empirical_month), ]
         intervening_years = block.loc[(block['relative_year'] <
-                                      relative_empirical_year) & 
+                                      relative_empirical_year) &
                                       (block['relative_year'] > first_rel_year), ]
-        first_year = block.loc[(block['relative_year'] == first_rel_year) & 
+        first_year = block.loc[(block['relative_year'] == first_rel_year) &
                                       (block['month'] >= first_rel_month), ]
         history = pd.concat([first_year, intervening_years, empirical_year])
         if len(history) > 0:
@@ -311,7 +311,7 @@ def summarize_calc_schedules(site_list, n_months, input_dir, century_dir,
 def retrieve_grazing_params(grz_file, grz_level):
     """Read the important grazing parameters flgrem and fdgrem associated
     with a given grazing level in the grz_file."""
-    
+
     with open(grz_file, 'rb') as grz:
         for line in grz:
             if '{}  '.format(grz_level) in line:
