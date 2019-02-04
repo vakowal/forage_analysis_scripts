@@ -231,6 +231,69 @@ def rotation(forage_args, n_pastures, pasture_size_ha, num_animals,
     # collect results
     collect_rotation_results(forage_args, n_pastures, outer_outdir)
 
+
+def summarize_cont_vs_rot(cont_dir, rot_dir):
+    """Summarize pasture biomass and animal diet sufficiency."""
+    anim_l = 'cattle'  # hack
+    cont_sum_csv = os.path.join(cont_dir, "summary_results.csv")
+    rot_a_csv = os.path.join(rot_dir, "animal_summary.csv")
+    rot_p_csv = os.path.join(rot_dir, "pasture_summary.csv")
+
+    cont_sum = pd.read_csv(cont_sum_csv)
+    cont_sum['date'] = cont_sum['year'] + 1./12 * cont_sum['month']
+    cont_green_col = [f for f in cont_sum.columns if f.endswith('green_kgha')]
+    assert len(cont_green_col) == 1, "Assume only one column matches"
+    cont_green_col = cont_green_col[0]
+    cont_dead_col = [f for f in cont_sum.columns if f.endswith('dead_kgha')]
+    assert len(cont_dead_col) == 1, "Assume only one column matches"
+    cont_dead_col = cont_dead_col[0]
+    cont_sum['pasture_kgha'] = (
+        cont_sum[cont_green_col] + cont_sum[cont_dead_col])
+    energy_intake = cont_sum['{}_MEItotal'.format(anim_l)]
+    energy_req = cont_sum['{}_E_req'.format(anim_l)]
+    cont_sum['diet_sufficiency'] = (energy_intake - energy_req) / energy_req
+    cont_sum['treatment'] = 'continuous'
+    cont_df = cont_sum[[
+        'date', 'pasture_kgha', 'diet_sufficiency', 'total_offtake',
+        'treatment']]
+
+    rot_p_df = pd.read_csv(rot_p_csv)
+    rot_p_df['date'] = rot_p_df['year'] + 1./12 * rot_p_df['month']
+    rot_grass_col = [f for f in rot_p_df.columns if f.endswith('total_kgha')]
+    assert len(rot_grass_col) == 1, "Assume only one column matches"
+    rot_p_df.rename(columns={rot_grass_col[0]: 'pasture_kgha'},
+                    inplace=True)
+    rot_mean = rot_p_df.groupby('date')['pasture_kgha'].mean().reset_index()
+
+    rot_a_df = pd.read_csv(rot_a_csv)
+    rot_a_df['date'] = rot_a_df['year'] + 1./12 * rot_a_df['month']
+    rot_a_df.rename(
+        columns={'animal_diet_sufficiency': 'diet_sufficiency'}, inplace=True)
+    rot_a_df = rot_a_df[['date', 'diet_sufficiency', 'total_offtake']]
+
+    rot_df = pd.merge(rot_mean, rot_a_df, how='outer', on='date')
+    rot_df['treatment'] = 'rotation'
+    rot_df = rot_df[[
+        'date', 'pasture_kgha', 'diet_sufficiency', 'total_offtake',
+        'treatment']]
+    combined_df = pd.concat([cont_df, rot_df])
+    return combined_df
+
+
+def summarize_pasture_biomass(rot_dir):
+    """Collect pasture biomass across rotated pastures."""
+    keep_cols = ['pasture_index', 'date', 'pasture_kgha']
+    rot_p_csv = os.path.join(rot_dir, "pasture_summary.csv")
+    rot_p_df = pd.read_csv(rot_p_csv)
+    rot_p_df['date'] = rot_p_df['year'] + 1./12 * rot_p_df['month']
+    rot_grass_col = [f for f in rot_p_df.columns if f.endswith('total_kgha')]
+    assert len(rot_grass_col) == 1, "Assume only one column matches"
+    rot_p_df.rename(columns={rot_grass_col[0]: 'pasture_kgha'},
+                    inplace=True)
+    rot_p_df = rot_p_df[keep_cols]
+    return rot_p_df
+
+
 def calc_productivity_metrics(cont_dir, rot_dir):
     """Summarize difference in pasture and animal productivity between a
     rotated and continuous schedule."""

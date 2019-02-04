@@ -36,7 +36,7 @@ def default_forage_args():
             'user_define_protein': 1,
             'user_define_digestibility': 0,
             'herbivore_csv': r"C:/Users/ginge/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/cattle.csv",
-            'grass_csv': r"C:/Users/ginge/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass.csv",
+            'grass_csv': r"C:/Users/ginge/Dropbox/NatCap_backup/WitW/model_inputs/Ucross/grass_high_quality_only.csv",
             'digestibility_flag': 'Konza',
             }
     return forage_args
@@ -278,37 +278,44 @@ def stocking_dens_test_wrapper_Jan_2019(outer_outdir):
     # num_animals = 350
     remove_months = [1, 2, 3, 11, 12]
 
-    # result_dict = {?}
-    for num_animals in [100]:  # [200, 350, 500]:
-        for n_pastures in [4]:  # [2, 4, 6, 8, 10]:
+    result_df_list = []
+    pasture_df_list = []
+    for num_animals in [245, 350, 455]:
+        stocking_rate = float(num_animals) / total_area_ha
+        for n_pastures in [2, 6, 10]:
             cont_dir = os.path.join(outer_outdir,
                                     'cont_{}_animals'.format(num_animals))
-            if not os.path.exists(os.path.join(cont_dir,
-                                               'summary_results.csv')):
+            # if not os.path.exists(os.path.join(cont_dir,
+            #                                    'summary_results.csv')):
                 # try:
-                control(num_animals, total_area_ha, cont_dir,
-                        remove_months)
+                # control(num_animals, total_area_ha, cont_dir,
+                #         remove_months)
                 # except:
                 #     continue
             rot_dir = os.path.join(
                 outer_outdir, 'blind_rot_{}_animals_{}_pastures'.format(
                     num_animals, n_pastures))
-            if not os.path.exists(os.path.join(rot_dir,
-                                               'pasture_summary.csv')):
+            # if not os.path.exists(os.path.join(rot_dir,
+            #                                    'pasture_summary.csv')):
                 # try:
-                blind_treatment(num_animals, total_area_ha, n_pastures,
-                                rot_dir, remove_months)
+            # blind_treatment(num_animals, total_area_ha, n_pastures,
+            #                 rot_dir, remove_months)
     #             except:
     #                 continue
-    #         gain_diff, pasture_diff = rotation.calc_productivity_metrics(
-    #                                                          cont_dir, rot_dir)
-    #         result_dict['num_animals'].append(num_animals)
-    #         result_dict['num_pastures'].append(n_pastures)
-    #         result_dict['gain_%_diff'].append(gain_diff)
-    #         result_dict['pasture_%_diff'].append(pasture_diff)
-    # result_df = pd.DataFrame(result_dict)
-    # result_df.to_csv(os.path.join(outer_outdir,
-    #                               'stocking_density_test_summary.csv'))
+            summary_df = rotation.summarize_cont_vs_rot(cont_dir, rot_dir)
+            summary_df['stocking_rate'] = stocking_rate
+            summary_df['num_pastures'] = n_pastures
+            result_df_list.append(summary_df)
+            rot_biomass_df = rotation.summarize_pasture_biomass(rot_dir)
+            rot_biomass_df['stocking_rate'] = stocking_rate
+            rot_biomass_df['num_pastures'] = n_pastures
+            pasture_df_list.append(rot_biomass_df)
+    result_df = pd.concat(result_df_list)
+    # result_df.to_csv(
+    #     os.path.join(outer_outdir, 'stocking_density_test_summary.csv'))
+    pasture_df = pd.concat(pasture_df_list)
+    pasture_df.to_csv(
+        os.path.join(outer_outdir, 'rotation_pasture_biomass.csv'))
 
 
 def zero_sd():
@@ -523,5 +530,5 @@ if __name__ == "__main__":
     outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\WitW\model_results\Ucross\Jan_2019\stocking_density_test"
     # outer_outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\WitW\model_results\Ucross\stocking_density_test_force_intake"
     stocking_dens_test_wrapper_Jan_2019(outer_outdir)
-    # erase_intermediate_files(outer_outdir)
+    erase_intermediate_files(outer_outdir)
     # composition_wrapper()
