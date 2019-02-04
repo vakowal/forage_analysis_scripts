@@ -845,14 +845,9 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     assert len(last_month) == 1, "More than one ending month found"
     PFT_label = list(crop_list)[0]
 
+    # collect parameters from all Century sources
+    master_param_dict = {}
     # get crop parameters from crop.100 file in CENTURY_DIR
-    PFT_param_dict = {'PFT': 1}
-    PFT_param_dict['growth_months'] = (
-        [','.join([str(m) for m in range(
-            int(list(first_month)[0]), int(list(last_month)[0]) + 1)])])
-    if senescence_month:
-        PFT_param_dict['senescence_month'] = (
-            ','.join([str(m) for m in list(senescence_month)]))
     with open(crop_params, 'rb') as cparam:
         for line in cparam:
             if line.startswith('{} '.format(PFT_label)):
@@ -860,12 +855,12 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                     label = re.sub(r"\'", "", line[13:].strip()).lower()
                     if label in parameters_to_keep:
                         value = float(line[:13].strip())
-                        PFT_param_dict[label] = value
+                        master_param_dict[label] = value
                     line = next(cparam)
                 label = re.sub(r"\'", "", line[13:].strip()).lower()
                 if label in parameters_to_keep:
                     value = float(line[:13].strip())
-                    PFT_param_dict[label] = value
+                    master_param_dict[label] = value
     # get grazing effect parameters from graz.100 file
     graz_file = os.path.join(CENTURY_DIR, 'graz.100')
     with open(graz_file, 'rb') as grazparams:
@@ -876,23 +871,19 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                     label = re.sub(r"\'", "", line[13:].strip()).lower()
                     if label in parameters_to_keep:
                         value = float(line[:13].strip())
-                        PFT_param_dict[label] = value
+                        master_param_dict[label] = value
                     line = next(grazparams)
                 label = re.sub(r"\'", "", line[13:].strip()).lower()
                 if label in parameters_to_keep:
                     value = float(line[:13].strip())
-                    PFT_param_dict[label] = value
+                    master_param_dict[label] = value
     # get site parameters from TEMPLATE_100
-    site_param_dict = {'site': 1}
     with open(TEMPLATE_100, 'rb') as siteparam:
         for line in siteparam:
             label = re.sub(r"\'", "", line[13:].strip()).lower()
             if label in parameters_to_keep:
                 value = float(line[:13].strip())
-                if label == 'nlaypg':
-                    nlaypg = value
-                else:
-                    site_param_dict[label] = value
+                master_param_dict[label] = value
     # get fixed parameters from old_model_inputs_dict['fix_file']
     with open(os.path.join(CENTURY_DIR, old_model_inputs_dict['fix_file']),
               'rb') as siteparam:
@@ -900,10 +891,7 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
             label = re.sub(r"\'", "", line[13:].strip()).lower()
             if label in parameters_to_keep:
                 value = float(line[:13].strip())
-                if label == 'gremb':
-                    PFT_param_dict[label] = value
-                else:
-                    site_param_dict[label] = value
+                master_param_dict[label] = value
 
     def century_to_rp(century_label):
         """Convert Century name to rangeland production name."""
@@ -912,8 +900,25 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
         rp = re.sub(r"\)", "", rp)
         return rp
 
+    # apportion parameters to PFT and site tables
+    PFT_param_dict = {'PFT': 1}
+    pft_params = parameter_table[
+        parameter_table['Property of'] == 'PFT']['Century parameter name']
+    for label in pft_params:
+        PFT_param_dict[label] = master_param_dict[label]
+    site_param_dict = {'site': 1}
+    site_params = parameter_table[
+        parameter_table['Property of'] == 'site']['Century parameter name']
+    for label in site_params:
+        site_param_dict[label] = master_param_dict[label]
+
     # add to grass csv to make PFT trait table
-    PFT_param_dict['nlaypg'] = nlaypg
+    PFT_param_dict['growth_months'] = (
+        [','.join([str(m) for m in range(
+            int(list(first_month)[0]), int(list(last_month)[0]) + 1)])])
+    if senescence_month:
+        PFT_param_dict['senescence_month'] = (
+            ','.join([str(m) for m in list(senescence_month)]))
     grass_df = pd.read_csv(old_model_inputs_dict['grass_csv'])
     grass_df = grass_df[['type', 'cprotein_green', 'cprotein_dead']]
     pft_df = pd.DataFrame(PFT_param_dict, index=[0])
@@ -979,12 +984,6 @@ def generate_initialization_rasters():
     for sbstr in ['PFT', 'site']:
         output_list = outvar_df[
             outvar_df.Property_of == sbstr].outvar.tolist()
-        if 'minerl(10,1)' in output_list:
-            output_list.remove('minerl(10,1)')
-            output_list.append('minerl(10,1')
-        if 'minerl(10,2)' in output_list:
-            output_list.remove('minerl(10,2)')
-            output_list.append('minerl(10,2')
         field_list = ['{}_{}_{:02d}'.format(
             f, target_year, target_month) for f in output_list]
         results_table_path = os.path.join(
@@ -1070,6 +1069,6 @@ if __name__ == "__main__":
     old_model_inputs_dict = generate_inputs_for_old_model(
         old_model_processing_dir, old_model_input_dir)
 
-    # generate_inputs_for_new_model(old_model_inputs_dict)
-    # generate_initialization_rasters()
+    generate_inputs_for_new_model(old_model_inputs_dict)
+    generate_initialization_rasters()
     generate_regression_tests()
