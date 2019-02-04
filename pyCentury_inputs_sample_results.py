@@ -29,6 +29,9 @@ TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\temp
 TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1_hist.sch"
 TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1.sch"
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
+DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
+LOCAL_DIR = "E:/GIS_local_8.27.18"  # "C:/Users/ginge/Documents/NatCap/GIS_local"
+
 
 def convert_to_year_month(CENTURY_date):
     """Convert CENTURY's representation of dates (from output file) to year
@@ -43,17 +46,18 @@ def convert_to_year_month(CENTURY_date):
         month = int(round(12. * (CENTURY_date - year)))
     return [year, month]
 
+
 def convert_to_century_date(year, month):
     """Convert year and month to Century's decimal representation of dates."""
-
     return float('%.2f' % (year + month / 12.))
+
 
 def generate_base_args():
     """These raw inputs should work for both old and new models."""
     args = {
             'starting_month': 1,
             'starting_year': 2016,
-            'n_months': 22,
+            'n_months': 1,
             'aoi_path': os.path.join(
                 SAMPLE_DATA, 'Manlai_soum.shp'),
             'bulk_density_path': os.path.join(
@@ -87,6 +91,7 @@ def generate_base_args():
         }
     return args
 
+
 def generate_inputs_for_old_model(processing_dir, input_dir):
     """Generate inputs for the old forage model that used the Century
     executable. Most of this taken from 'mongolia_workflow()' in the script
@@ -96,12 +101,14 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
     for many sites."""
 
     input_args = generate_base_args()
-    point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+    point_shp = os.path.join(
+        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
 
     def write_soil_table(site_shp, save_as):
         """Make soil table to use as input for site files"""
 
-        # make a temporary copy of the point shapefile to append worldclim values
+        # make a temporary copy of the point shapefile to append
+        # worldclim values
         tempdir = tempfile.mkdtemp()
         source_shp = site_shp
         site_shp = os.path.join(tempdir, 'points.shp')
@@ -163,11 +170,11 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         # add lat and long
         soil_df["latitude"] = "NA"
         soil_df["longitude"] = "NA"
-        arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(4326)  # WGS 1984
+        # WGS 1984
+        arcpy.env.outputCoordinateSystem = arcpy.SpatialReference(4326)
         arcpy.AddXY_management(site_shp)
-        with arcpy.da.SearchCursor(site_shp,
-                                   ['site_id', 'POINT_X', 'POINT_Y']) \
-                                   as cursor:
+        with arcpy.da.SearchCursor(
+                site_shp, ['site_id', 'POINT_X', 'POINT_Y']) as cursor:
             for row in cursor:
                 try:
                     soil_df = soil_df.set_value([row[0]], 'longitude', row[1])
@@ -181,7 +188,8 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         we will launch the old model."""
 
         tempdir = tempfile.mkdtemp()
-        # make a temporary copy of the point shapefile to append worldclim values
+        # make a temporary copy of the point shapefile to append
+        # worldclim values
         source_shp = site_shp
         point_shp = os.path.join(tempdir, 'points.shp')
         arcpy.Copy_management(source_shp, point_shp)
@@ -234,10 +242,12 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         """Write precipitation table from Worldclim average precipitation, to
         be used for spin-up simulations."""
 
-        worldclim_pattern = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\Worldclim\precip\wc2.0_30s_prec_<month>.tif"
+        worldclim_pattern = os.path.join(
+            LOCAL_DIR, "Mongolia/Worldclim/precip/wc2.0_30s_prec_<month>.tif")
 
         tempdir = tempfile.mkdtemp()
-        # make a temporary copy of the point shapefile to append worldclim values
+        # make a temporary copy of the point shapefile to append
+        # worldclim values
         source_shp = site_shp
         point_shp = os.path.join(tempdir, 'points.shp')
         arcpy.Copy_management(source_shp, point_shp)
@@ -356,14 +366,14 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
 
         year_list = list()
         for month_index in xrange(int(input_args['n_months'])):
-            year_list.append(starting_year + (starting_month +
-                             month_index - 1) // 12)
+            year_list.append(
+                starting_year + (starting_month + month_index - 1) // 12)
         year_list = set(year_list)
 
         site_df = pd.read_csv(soil_table)
         site_list = site_df.site_id.unique().tolist()
         precip_basename = os.path.basename(
-                               input_args['monthly_precip_path_pattern'])[:-4]
+            input_args['monthly_precip_path_pattern'])[:-4]
         for site in site_list:
             temp_subs = temperature_df.loc[temperature_df['site'] == site]
             temp_subs = temp_subs.set_index('month')
@@ -434,8 +444,9 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             fh, abs_path = mkstemp()
             os.close(fh)
             with open(abs_path, 'wb') as newfile:
-                first_line = ('%d (generated by script)\r\n' %
-                                int(inputs_dict['site_id']))
+                first_line = (
+                    '%d (generated by script)\r\n' %
+                    int(inputs_dict['site_id']))
                 newfile.write(first_line)
                 with open(TEMPLATE_100, 'rb') as old_file:
                     next(old_file)
@@ -449,9 +460,11 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                                         item, m)
                         newfile.write(newline)
                     for m in range(1, 13):
-                        newfile.write('0.00000           \'PRCSTD({})\'\n'.format(m))
+                        newfile.write(
+                            '0.00000           \'PRCSTD({})\'\n'.format(m))
                     for m in range(1, 13):
-                        newfile.write('0.00000           \'PRCSKW({})\'\n'.format(m))
+                        newfile.write(
+                            '0.00000           \'PRCSKW({})\'\n'.format(m))
                     while 'TMN2M(1)' not in line:
                         line = old_file.next()
                     for m in range(1, 13):
@@ -520,11 +533,13 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                     for line in old_file:
                         if '  Weather choice' in line:
                             if wth_file:
-                                newfile.write('F             Weather choice\r\n')
+                                newfile.write(
+                                    'F             Weather choice\r\n')
                                 newfile.write('{}\r\n'.format(wth_file))
                                 line = old_file.next()
                             else:
-                                newfile.write('M             Weather choice\r\n')
+                                newfile.write(
+                                    'M             Weather choice\r\n')
                                 line = old_file.next()
                         if '.wth\r\n' in line:
                             line = old_file.next()
@@ -549,40 +564,44 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
     precip_dir = os.path.dirname(input_args['monthly_precip_path_pattern'])
     soil_table = os.path.join(processing_dir, "soil_table.csv")
     precip_table = os.path.join(processing_dir, "chirps_precip.csv")
-    worldclim_precip_table = os.path.join(processing_dir,
-                                          "worldclim_precip.csv")
-    temperature_table = os.path.join(processing_dir,
-                                     "temperature_table.csv")
+    worldclim_precip_table = os.path.join(
+        processing_dir, "worldclim_precip.csv")
+    temperature_table = os.path.join(
+        processing_dir, "temperature_table.csv")
 
     # write_soil_table(point_shp, soil_table)
     # write_temperature_table(point_shp, temperature_table)
     # write_precip_table_from_rasters(precip_dir, point_shp, precip_table)
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
-    # write_wth_files(soil_table, temperature_table, precip_table,
-                    # input_dir)
+    # write_wth_files(
+        # soil_table, temperature_table, precip_table, input_dir)
 
     # write_worldclim_precip_table(point_shp, worldclim_precip_table)
-    # write_site_files(soil_table, worldclim_precip_table,
-                     # temperature_table, input_dir)
+    # write_site_files(
+        # soil_table, worldclim_precip_table, temperature_table, input_dir)
     # write_sch_files(soil_table, input_dir)
 
-    ##### other inputs I don't know how to store yet
-    grass_table = r"C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/grass.csv"
-    herb_table = r"C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/cashmere_goats.csv"
+    # other inputs I don't know how to store yet
+    grass_table = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_inputs/grass.csv")
+    herb_table = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_inputs/cashmere_goats.csv")
     template_level = 'GH'
     fix_file = 'drygfix.100'
 
-    old_model_inputs_dict = {'site_table': soil_table,
-                             'grass_csv': grass_table,
-                             'herbivore_csv': herb_table,
-                             'template_level': template_level,
-                             'fix_file': fix_file,
-                            }
+    old_model_inputs_dict = {
+        'site_table': soil_table,
+        'grass_csv': grass_table,
+        'herbivore_csv': herb_table,
+        'template_level': template_level,
+        'fix_file': fix_file,
+    }
     return old_model_inputs_dict
 
-def launch_old_model(old_model_inputs_dict, old_model_input_dir,
-                     old_model_output_dir):
+
+def launch_old_model(
+        old_model_inputs_dict, old_model_input_dir, old_model_output_dir):
     """Run the old model with sample inputs. Most of this taken from the
     script Mongolia_monitoring_sites_launch_forage.py (i.e., results we
     generated for AGU in 2017)"""
@@ -619,7 +638,7 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
             'start_year': input_args['starting_year'],
             'start_month': input_args['starting_month'],
             'num_months': input_args['n_months'],
-            'mgmt_threshold': 0.01,
+            'mgmt_threshold': 300.,
             'century_dir': CENTURY_DIR,
             'template_level': old_model_inputs_dict['template_level'],
             'fix_file': old_model_inputs_dict['fix_file'],
@@ -627,28 +646,27 @@ def launch_old_model(old_model_inputs_dict, old_model_input_dir,
             'user_define_digestibility': 0,
             'herbivore_csv': old_model_inputs_dict['herbivore_csv'],
             'grass_csv': old_model_inputs_dict['grass_csv'],
-            'restart_monthly': 1,
             }
 
     modify_stocking_density(old_model_args['herbivore_csv'], 0)  # TODO relate sd to new model
     site_list = pd.read_csv(
-                    old_model_inputs_dict['site_table']).to_dict(
-                                                         orient='records')
+        old_model_inputs_dict['site_table']).to_dict(orient='records')
     outer_outdir = old_model_output_dir
     for site in site_list:
         old_model_args['latitude'] = site['latitude']
-        old_model_args['outdir'] = os.path.join(outer_outdir,
-                                             '{}'.format(int(site['site_id'])))
-        if not os.path.isfile(os.path.join(old_model_args['outdir'],
-                                               'summary_results.csv')):
+        old_model_args['outdir'] = os.path.join(
+            outer_outdir, '{}'.format(int(site['site_id'])))
+        if not os.path.isfile(os.path.join(
+                old_model_args['outdir'], 'summary_results.csv')):
             edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
             try:
                 old_model.execute(old_model_args)
             except:
                 continue
 
-def table_to_raster(table, field_list, grid_point_shp, save_dir,
-                    save_as_field_list=None):
+
+def table_to_raster(
+        table, field_list, grid_point_shp, save_dir, save_as_field_list=None):
     """Generate a series of rasters from values in the fields `field_list` in
     `table`. First join the values from the table to a shapefile containing
     points, then generate a raster for each field in `field_list` from the
@@ -668,9 +686,10 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir,
     temp_table_out = os.path.join(tempdir, 'temp_table.csv')
     table_df.to_csv(temp_table_out)
     shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
-    assert len(set(shp_fields).intersection(
-               set(table_df.reset_index().columns.values))) == 1, \
-               "Table and shapefile must contain 1 matching value"
+    assert (
+        len(set(shp_fields).intersection(set(
+            table_df.reset_index().columns.values))) == 1,
+        "Table and shapefile must contain 1 matching value")
     # use this key to keep track of field names in original data sources,
     # since the join and export will change them
     if save_as_field_list:
@@ -684,20 +703,22 @@ def table_to_raster(table, field_list, grid_point_shp, save_dir,
     temp_shp_out = os.path.join(tempdir, 'points.shp')
     arcpy.CopyFeatures_management('temp_layer', temp_shp_out)
     joined_field_list = [f.name for f in arcpy.ListFields(temp_shp_out)]
-    assert len(shp_fields) + len(field_list) + 1 == len(joined_field_list), \
-             "This is not working as expected"
+    assert (
+        len(shp_fields) + len(field_list) + 1 == len(joined_field_list),
+        "This is not working as expected")
     start_idx = len(joined_field_list) - len(field_list)
     end_idx = len(joined_field_list)
     for field_idx in xrange(start_idx, end_idx):
         field_name = field_key[field_idx]
         shp_field = joined_field_list[field_idx]
         raster_path = os.path.join(save_dir, '{}.tif'.format(field_name))
-        arcpy.PointToRaster_conversion(temp_shp_out, shp_field, raster_path,
-                                       cellsize=cell_size)
+        arcpy.PointToRaster_conversion(
+            temp_shp_out, shp_field, raster_path, cellsize=cell_size)
 
-def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                               results_table_path, output_list, start_time,
-                               end_time):
+
+def old_model_results_to_table(
+        old_model_inputs_dict, old_model_output_dir, results_table_path,
+        output_list, start_time, end_time):
     """Collect results from old model to use as initial values or targets for
     regression testing of new model.  Century outputs to collect should be
     supplied in output_list. Outputs will be collected that fall in
@@ -723,10 +744,35 @@ def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
                                         century_out_basename,
                                         '{}.lis'.format(int(site)))
         try:
-            cent_df = pd.io.parsers.read_fwf(century_out_file, skiprows = [1])
+            cent_df = pd.read_fwf(century_out_file, skiprows=[1])
         except IOError:
             failed_sites.append(site)
             continue
+        # mistakes in Century writing results
+        if 'minerl(10,1' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                inplace=True)
+        if 'minerl(10,2' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,2': 'struce(2,2)'},
+                inplace=True)
+        try:
+            fwf_correct = cent_df[output_list]
+        except KeyError:
+            # try again, specifying widths explicitly
+            widths = [16] * 79
+            cent_df = pd.read_fwf(
+                century_out_file, skiprows=[1], widths=widths)
+            # mistakes in Century writing results
+            if 'minerl(10,1' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                    inplace=True)
+            if 'minerl(10,2' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,2': 'minerl(10,2)'},
+                    inplace=True)
         df_subset = cent_df[(cent_df.time >= start_time) &
                             (cent_df.time <= end_time)]
         df_subset = df_subset.drop_duplicates('time')
@@ -739,13 +785,16 @@ def old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
     # reshape to "wide" format
     century_reshape = pd.pivot_table(century_results, values=output_list[1:],
                                      index='site_id', columns='time')
-    cols = ['{}_{}_{}'.format(c[0], convert_to_year_month(c[1])[0],
-                              convert_to_year_month(c[1])[1])
-                              for c in century_reshape.columns.values]
+    cols = [
+        '{}_{}_{}'.format(
+            c[0], convert_to_year_month(c[1])[0],
+            convert_to_year_month(c[1])[1]) for c in
+        century_reshape.columns.values]
     century_reshape.columns = cols
     century_reshape.to_csv(results_table_path)
     print "The following sites failed:"
     print failed_sites
+
 
 def generate_inputs_for_new_model(old_model_inputs_dict):
     """Generate inputs for the new forage model that includes plant production
@@ -754,7 +803,10 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
 
     new_model_args = generate_base_args()
     # parameter table containing only necessary parameters
-    parameter_table = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_parameter_table.csv")
+    parameter_table = pd.read_csv(
+        os.path.join(
+            DROPBOX_DIR,
+            "Forage_model/CENTURY4.6/GK_doc/Century_parameter_table.csv"))
     parameters_to_keep = parameter_table['Century parameter name'].tolist()
     crop_params = os.path.join(CENTURY_DIR, 'crop.100')
 
@@ -795,11 +847,12 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
 
     # get crop parameters from crop.100 file in CENTURY_DIR
     PFT_param_dict = {'PFT': 1}
-    PFT_param_dict['growth_months'] = [','.join([str(m) for m in
-        range(int(list(first_month)[0]), int(list(last_month)[0]) + 1)])]
+    PFT_param_dict['growth_months'] = (
+        [','.join([str(m) for m in range(
+            int(list(first_month)[0]), int(list(last_month)[0]) + 1)])])
     if senescence_month:
-        PFT_param_dict['senescence_month'] = ','.join([str(m) for m in
-            list(senescence_month)])
+        PFT_param_dict['senescence_month'] = (
+            ','.join([str(m) for m in list(senescence_month)]))
     with open(crop_params, 'rb') as cparam:
         for line in cparam:
             if line.startswith('{} '.format(PFT_label)):
@@ -853,6 +906,7 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
                     site_param_dict[label] = value
 
     def century_to_rp(century_label):
+        """Convert Century name to rangeland production name."""
         rp = re.sub(r"\(", "_", century_label)
         rp = re.sub(r",", "_", rp)
         rp = re.sub(r"\)", "", rp)
@@ -876,27 +930,32 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
 
     # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
 
+
 def initial_variables_to_outvars():
     """Make new outvars file (the output variables collected by Century) for
     collection of variables needed to initialize new model."""
-
-    initial_var_table = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_state_variables.csv"
-    outvars_table = r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014\outvars.txt"
+    initial_var_table = os.path.join(
+        DROPBOX_DIR,
+        "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
+    outvars_table = os.path.join(CENTURY_DIR, "outvars.txt")
 
     init_var_df = pd.read_csv(initial_var_table)
-    init_var_df['outvars'] = [v.lower() for
-        v in init_var_df.State_variable_Century]
+    init_var_df['outvars'] = [
+        v.lower() for v in init_var_df.State_variable_Century]
     outvar_df = init_var_df['outvars']
     outvar_df.to_csv(outvars_table, header=False, index=False, sep='\t')
+
 
 def generate_initialization_rasters():
     """Run the old model and collect results to be used as intialization
     rasters for new model."""
 
-    initialization_dir = r"C:\Users\ginge\Documents\NatCap\sample_data\initialization_data"
+    initialization_dir = (
+        "C:/Users/ginge/Documents/NatCap/sample_inputs/initialization_data")
     if not os.path.exists(initialization_dir):
         os.makedirs(initialization_dir)
-    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+    grid_point_shp = os.path.join(
+        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
     input_args = generate_base_args()
 
     starting_month = int(input_args['starting_month'])
@@ -908,11 +967,14 @@ def generate_initialization_rasters():
     end_time = start_time
 
     initial_variables_to_outvars()
-    launch_old_model(old_model_inputs_dict, old_model_input_dir,
-                     old_model_output_dir)
+    launch_old_model(
+        old_model_inputs_dict, old_model_input_dir, old_model_output_dir)
 
     # intialization rasters
-    outvar_df = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_state_variables.csv")
+    outvar_csv = os.path.join(
+        DROPBOX_DIR,
+        "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
+    outvar_df = pd.read_csv(outvar_csv)
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
     for sbstr in ['PFT', 'site']:
         output_list = outvar_df[
@@ -923,63 +985,69 @@ def generate_initialization_rasters():
         if 'minerl(10,2)' in output_list:
             output_list.remove('minerl(10,2)')
             output_list.append('minerl(10,2')
-        field_list = ['{}_{}_{:02d}'.format(f, target_year, target_month)
-            for f in output_list]
-        results_table_path = os.path.join(old_model_output_dir,
-                                          '{}_initial.csv'.format(sbstr))
-        old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                                   results_table_path, output_list, start_time,
-                                   end_time)
-        save_as_field_list = outvar_df[
-            outvar_df.Property_of == sbstr].\
-            State_variable_rangeland_production.tolist()
+        field_list = ['{}_{}_{:02d}'.format(
+            f, target_year, target_month) for f in output_list]
+        results_table_path = os.path.join(
+            old_model_output_dir, '{}_initial.csv'.format(sbstr))
+        old_model_results_to_table(
+            old_model_inputs_dict, old_model_output_dir, results_table_path,
+            output_list, start_time, end_time)
+        save_as_field_list = (
+            outvar_df[outvar_df.Property_of == sbstr].
+            State_variable_rangeland_production.tolist())
         if sbstr == 'PFT':
             # hack that assumes we have just one PFT
             save_as_field_list = ['{}_1'.format(f) for f in save_as_field_list]
         assert len(save_as_field_list) == len(field_list), """Save as field
             list must be of equal length to field list"""
         save_dir = initialization_dir
-        table_to_raster(results_table_path, field_list, grid_point_shp,
-                        save_dir, save_as_field_list=save_as_field_list)
+        table_to_raster(
+            results_table_path, field_list, grid_point_shp, save_dir,
+            save_as_field_list=save_as_field_list)
+
 
 def generate_regression_tests():
     """Run the old model and collect results to be used as regression testing
     target rasters for new model."""
-
-    regression_test_dir = r"C:\Users\ginge\Documents\NatCap\regression_test_data"
+    regression_test_dir = (
+        "C:/Users/ginge/Documents/NatCap/regression_test_data")
     if not os.path.exists(regression_test_dir):
         os.makedirs(regression_test_dir)
-    grid_point_shp = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+    grid_point_shp = os.path.join(
+        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
     input_args = generate_base_args()
 
     starting_month = int(input_args['starting_month'])
     starting_year = int(input_args['starting_year'])
     month_i = int(input_args['n_months'])
-    target_month = (starting_month + month_i - 1) % 12 + 1
-    target_year = starting_year + (starting_month + month_i - 1) // 12
-    start_time = convert_to_century_date(target_year, target_month)
+    end_month = (starting_month + month_i - 1) % 12 + 1
+    end_year = starting_year + (starting_month + month_i - 1) // 12
+    start_time = convert_to_century_date(end_year, end_month)
     end_time = start_time
 
     initial_variables_to_outvars()
-    launch_old_model(old_model_inputs_dict, old_model_input_dir,
-                     old_model_output_dir)
+    launch_old_model(
+        old_model_inputs_dict, old_model_input_dir, old_model_output_dir)
 
     # regression testing rasters
-    outvar_df = pd.read_csv(r"C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\GK_doc\Century_state_variables.csv")
+    outvar_df = pd.read_csv(
+        os.path.join(
+            DROPBOX_DIR,
+            "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv"))
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
-    for sbstr in ['PFT', 'site']:
+    for sbstr in ['site']:  # 'PFT'
         output_list = outvar_df[
             outvar_df.Property_of == sbstr].outvar.tolist()
-        field_list = ['{}_{}_{:02d}'.format(f, target_year, target_month)
-            for f in output_list]
-        results_table_path = os.path.join(old_model_output_dir,
-                                          '{}_initial.csv'.format(sbstr))
-        old_model_results_to_table(old_model_inputs_dict, old_model_output_dir,
-                                   results_table_path, output_list, start_time,
-                                   end_time)
-        save_as_field_list = outvar_df[
-            outvar_df.Property_of == sbstr].\
-            State_variable_rangeland_production.tolist()
+        field_list = ['{}_{}_{:d}'.format(
+            f, end_year, end_month) for f in output_list]
+        results_table_path = os.path.join(
+            old_model_output_dir, '{}_initial.csv'.format(sbstr))
+        old_model_results_to_table(
+            old_model_inputs_dict, old_model_output_dir, results_table_path,
+            output_list, start_time, end_time)
+        save_as_field_list = (
+            outvar_df[outvar_df.Property_of ==
+            sbstr].State_variable_rangeland_production.tolist())
         if sbstr == 'PFT':
             # hack that assumes we have just one PFT
             save_as_field_list = ['{}_1'.format(f) for f in save_as_field_list]
@@ -991,14 +1059,17 @@ def generate_regression_tests():
 
 
 if __name__ == "__main__":
-    old_model_processing_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\pycentury_dev"
-    old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
-    old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\pycentury_dev"
-    regression_testing_dir = os.path.join(old_model_output_dir,
-                                          'regression_test_data')
+    old_model_processing_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_inputs/pycentury_dev")
+    old_model_input_dir = os.path.join(
+        old_model_processing_dir, 'model_inputs')
+    old_model_output_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_results/pycentury_dev")
+    regression_testing_dir = os.path.join(
+        old_model_output_dir, 'regression_test_data')
     old_model_inputs_dict = generate_inputs_for_old_model(
-                                old_model_processing_dir, old_model_input_dir)
+        old_model_processing_dir, old_model_input_dir)
 
-    generate_inputs_for_new_model(old_model_inputs_dict)
+    # generate_inputs_for_new_model(old_model_inputs_dict)
     # generate_initialization_rasters()
-    # generate_regression_tests()
+    generate_regression_tests()
