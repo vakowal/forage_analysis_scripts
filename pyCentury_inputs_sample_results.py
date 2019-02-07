@@ -17,6 +17,7 @@ import shutil
 import re
 import math
 from tempfile import mkstemp
+import pygeoprocessing
 
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage as old_model
@@ -31,6 +32,7 @@ TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\temp
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
 DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
 LOCAL_DIR = "E:/GIS_local_8.27.18"  # "C:/Users/ginge/Documents/NatCap/GIS_local"
+GRID_POINT_SHP = "E:/GIS_local_8.27.18/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
 
 
 def convert_to_year_month(CENTURY_date):
@@ -57,7 +59,7 @@ def generate_base_args():
     args = {
             'starting_month': 1,
             'starting_year': 2016,
-            'n_months': 1,
+            'n_months': 22,
             'aoi_path': os.path.join(
                 SAMPLE_DATA, 'Manlai_soum.shp'),
             'bulk_density_path': os.path.join(
@@ -79,8 +81,8 @@ def generate_base_args():
                 SAMPLE_DATA, 'temp', 'wc2.0_30s_tmax_<month>.tif'),
             'site_param_path': os.path.join(
                 SAMPLE_DATA, 'site_parameters.csv'),
-            'site_param_raster_path_pattern': os.path.join(
-                SAMPLE_DATA, 'site<site>.tif'),
+            'site_param_spatial_index_path': os.path.join(
+                SAMPLE_DATA, 'site_index.tif'),
             'veg_trait_path': os.path.join(SAMPLE_DATA, 'pft_trait.csv'),
             'veg_spatial_composition_path_pattern': os.path.join(
                 SAMPLE_DATA, 'pft<PFT>.tif'),
@@ -92,6 +94,113 @@ def generate_base_args():
     return args
 
 
+def generate_aligned_inputs():
+    """Resample all input rasters to align with point-based results.
+
+    In order for results from the new forage model to be comparable to results
+    from point-based Century, all input rasters must be of resolution equal to
+    or larger than the raster that is used to summarize results from point-
+    based Century.  Resample and align all input rasters to that raster.
+    """
+    template_raster = os.path.join(
+        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixels_1_soum.tif")
+    base_args = generate_base_args()
+    starting_month = int(base_args['starting_month'])
+    starting_year = int(base_args['starting_year'])
+    n_months = 22  # int(base_args['n_months'])
+    base_align_raster_list = [
+        base_args['bulk_density_path'],
+        base_args['ph_path'],
+        base_args['clay_proportion_path'],
+        base_args['silt_proportion_path'],
+        base_args['sand_proportion_path'],
+        base_args['site_param_spatial_index_path']]
+    temperature_month_set = set()
+    for month_index in xrange(n_months):
+        month_i = (starting_month + month_index - 1) % 12 + 1
+        temperature_month_set.add(month_i)
+        year = starting_year + (starting_month + month_index - 1) // 12
+        precip_path = base_args[
+            'monthly_precip_path_pattern'].replace(
+                '<year>', str(year)).replace('<month>', '%.2d' % month_i)
+        base_align_raster_list.append(precip_path)
+    for substring in ['min', 'max']:
+        for month_i in temperature_month_set:
+            monthly_temp_path = base_args[
+                '%s_temp_path_pattern' % substring].replace(
+                    '<month>', '%.2d' % month_i)
+            base_align_raster_list.append(monthly_temp_path)
+    pft_dir = os.path.dirname(
+        base_args['veg_spatial_composition_path_pattern'])
+    pft_basename = os.path.basename(
+        base_args['veg_spatial_composition_path_pattern'])
+    files = [
+        f for f in os.listdir(pft_dir) if os.path.isfile(
+            os.path.join(pft_dir, f))]
+    pft_regex = re.compile(pft_basename.replace('<PFT>', r'(\d+)'))
+    pft_matches = [
+        m for m in [pft_regex.search(f) for f in files] if m is not None]
+    pft_id_set = set([int(m.group(1)) for m in pft_matches])
+    for pft_i in pft_id_set:
+        pft_path = base_args['veg_spatial_composition_path_pattern'].replace(
+            '<PFT>', '%d' % pft_i)
+        base_align_raster_list.append(pft_path)
+
+    aligned_raster_dir = os.path.join(SAMPLE_DATA, 'aligned_inputs')
+    if not os.path.exists(aligned_raster_dir):
+        os.makedirs(aligned_raster_dir)
+        source_input_path_list = sorted(base_align_raster_list)
+        aligned_input_path_list = [os.path.join(
+            aligned_raster_dir, os.path.basename(path))
+            for path in source_input_path_list]
+        source_input_path_list.append(template_raster)
+        aligned_input_path_list.append(
+            os.path.join(aligned_raster_dir,
+                         os.path.basename(template_raster)))
+        target_pixel_size = pygeoprocessing.get_raster_info(
+            template_raster)['pixel_size']
+        try:
+            pygeoprocessing.align_and_resize_raster_stack(
+                source_input_path_list, aligned_input_path_list,
+                ['near'] * len(source_input_path_list),
+                target_pixel_size, 'intersection',
+                raster_align_index=len(source_input_path_list) - 1)
+        except ValueError, e:
+            print "Error aligning: " + str(e)
+            raise
+
+    aligned_args = base_args
+    aligned_args['bulk_density_path'] = os.path.join(
+        aligned_raster_dir, os.path.basename(base_args['bulk_density_path']))
+    aligned_args['ph_path'] = os.path.join(
+        aligned_raster_dir, os.path.basename(base_args['ph_path']))
+    aligned_args['clay_proportion_path'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['clay_proportion_path']))
+    aligned_args['silt_proportion_path'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['silt_proportion_path']))
+    aligned_args['sand_proportion_path'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['sand_proportion_path']))
+    aligned_args['monthly_precip_path_pattern'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['monthly_precip_path_pattern']))
+    aligned_args['min_temp_path_pattern'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['min_temp_path_pattern']))
+    aligned_args['max_temp_path_pattern'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['max_temp_path_pattern']))
+    aligned_args['site_param_spatial_index_path'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['site_param_spatial_index_path']))
+    aligned_args['veg_spatial_composition_path_pattern'] = os.path.join(
+        aligned_raster_dir,
+        os.path.basename(base_args['veg_spatial_composition_path_pattern']))
+    return aligned_args
+
+
 def generate_inputs_for_old_model(processing_dir, input_dir):
     """Generate inputs for the old forage model that used the Century
     executable. Most of this taken from 'mongolia_workflow()' in the script
@@ -100,9 +209,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
     Returns a dictionary of inputs that can be used to launch the old model
     for many sites."""
 
-    input_args = generate_base_args()
-    point_shp = os.path.join(
-        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
+    input_args = generate_aligned_inputs()
 
     def write_soil_table(site_shp, save_as):
         """Make soil table to use as input for site files"""
@@ -569,15 +676,15 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
     temperature_table = os.path.join(
         processing_dir, "temperature_table.csv")
 
-    # write_soil_table(point_shp, soil_table)
-    # write_temperature_table(point_shp, temperature_table)
-    # write_precip_table_from_rasters(precip_dir, point_shp, precip_table)
+    # write_soil_table(GRID_POINT_SHP, soil_table)
+    # write_temperature_table(GRID_POINT_SHP, temperature_table)
+    # write_precip_table_from_rasters(precip_dir, GRID_POINT_SHP, precip_table)
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
     # write_wth_files(
         # soil_table, temperature_table, precip_table, input_dir)
 
-    # write_worldclim_precip_table(point_shp, worldclim_precip_table)
+    # write_worldclim_precip_table(GRID_POINT_SHP, worldclim_precip_table)
     # write_site_files(
         # soil_table, worldclim_precip_table, temperature_table, input_dir)
     # write_sch_files(soil_table, input_dir)
@@ -629,7 +736,7 @@ def launch_old_model(
         df[['label']] = df[['label']].astype(type(label))
         df.to_csv(grass_csv)
 
-    input_args = generate_base_args()
+    input_args = generate_aligned_inputs()
     old_model_args = {
             'input_dir': old_model_input_dir,
             'prop_legume': 0.0,
@@ -724,7 +831,7 @@ def old_model_results_to_table(
     supplied in output_list. Outputs will be collected that fall in
     [start_time, end_time]."""
 
-    input_args = generate_base_args()
+    input_args = generate_aligned_inputs()
     output_list.insert(0, 'time')
 
     # collect from raw Century outputs, the last month of the simulation
@@ -801,7 +908,7 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     model written in Python.  This should take the same raw inputs as
     'generate_inputs_for_old_model()'."""
 
-    new_model_args = generate_base_args()
+    new_model_args = generate_aligned_inputs()
     # parameter table containing only necessary parameters
     parameter_table = pd.read_csv(
         os.path.join(
@@ -959,9 +1066,7 @@ def generate_initialization_rasters():
         "C:/Users/ginge/Documents/NatCap/sample_inputs/initialization_data")
     if not os.path.exists(initialization_dir):
         os.makedirs(initialization_dir)
-    grid_point_shp = os.path.join(
-        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
-    input_args = generate_base_args()
+    input_args = generate_aligned_inputs()
 
     starting_month = int(input_args['starting_month'])
     starting_year = int(input_args['starting_year'])
@@ -1001,7 +1106,7 @@ def generate_initialization_rasters():
             list must be of equal length to field list"""
         save_dir = initialization_dir
         table_to_raster(
-            results_table_path, field_list, grid_point_shp, save_dir,
+            results_table_path, field_list, GRID_POINT_SHP, save_dir,
             save_as_field_list=save_as_field_list)
 
 
@@ -1012,9 +1117,7 @@ def generate_regression_tests():
         "C:/Users/ginge/Documents/NatCap/regression_test_data")
     if not os.path.exists(regression_test_dir):
         os.makedirs(regression_test_dir)
-    grid_point_shp = os.path.join(
-        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp")
-    input_args = generate_base_args()
+    input_args = generate_aligned_inputs()
 
     starting_month = int(input_args['starting_month'])
     starting_year = int(input_args['starting_year'])
@@ -1034,7 +1137,7 @@ def generate_regression_tests():
             DROPBOX_DIR,
             "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv"))
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
-    for sbstr in ['site']:  # 'PFT'
+    for sbstr in ['site', 'PFT']:
         output_list = outvar_df[
             outvar_df.Property_of == sbstr].outvar.tolist()
         field_list = ['{}_{}_{:d}'.format(
@@ -1053,7 +1156,7 @@ def generate_regression_tests():
         assert len(save_as_field_list) == len(field_list), """Save as field
             list must be of equal length to field list"""
         save_dir = regression_test_dir
-        table_to_raster(results_table_path, field_list, grid_point_shp,
+        table_to_raster(results_table_path, field_list, GRID_POINT_SHP,
                         save_dir, save_as_field_list=save_as_field_list)
 
 
@@ -1069,6 +1172,6 @@ if __name__ == "__main__":
     old_model_inputs_dict = generate_inputs_for_old_model(
         old_model_processing_dir, old_model_input_dir)
 
-    generate_inputs_for_new_model(old_model_inputs_dict)
-    generate_initialization_rasters()
+    # generate_inputs_for_new_model(old_model_inputs_dict)
+    # generate_initialization_rasters()
     generate_regression_tests()
