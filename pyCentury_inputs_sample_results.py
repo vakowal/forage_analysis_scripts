@@ -1,27 +1,34 @@
-## Process raw data, generate inputs for old forage model, generate inputs
-## for new forage model (PyCentury), and launch old forage model to generate
-## regression testing results to test new forage model against.
+"""Generate regression testing results for new forage model.
 
+This module contains functions to generate regression testing rasters from
+the old forage model, which can be used to test the new forage model.
+From a given set of data that are sufficient to launch the new forage model
+(i.e. the model containing a Century implementation in Python), generate
+inputs for the old forage model, including inputs for a series of points to
+run the original Fortran version of Century in a grid, emulating a raster.
+Collect results from the old model and convert them to raster, to be used
+as regression tests for the new model.
+"""
 import os
 import sys
-import pandas as pd
-import glob
-import numpy as np
-from osgeo import ogr
-from osgeo import gdal
 import collections
 import taskgraph
-import arcpy
 import tempfile
 import shutil
 import re
 import math
 from tempfile import mkstemp
+
+import pandas
+import numpy
+from osgeo import ogr
+from osgeo import gdal
+from osgeo import osr
+import arcpy
 import pygeoprocessing
 
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage as old_model
-
 
 arcpy.CheckOutExtension("Spatial")
 
@@ -32,7 +39,7 @@ TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\temp
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
 DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
 LOCAL_DIR = "E:/GIS_local_8.27.18"  # "C:/Users/ginge/Documents/NatCap/GIS_local"
-GRID_POINT_SHP = "E:/GIS_local_8.27.18/Mongolia/CHIRPS/CHIRPS_pixel_centroid_1_soum.shp"
+GRID_POINT_SHP = os.path.join(LOCAL_DIR, "raster_template_point.shp")
 
 
 def convert_to_year_month(CENTURY_date):
@@ -54,14 +61,133 @@ def convert_to_century_date(year, month):
     return float('%.2f' % (year + month / 12.))
 
 
+def check_raster_dimensions(raster1_path, raster2_path):
+    """Ensure that raster1 and raster2 have identical dimensions."""
+    base_raster_path_band_const_list = [
+        (raster1_path, 1), (raster2_path, 1)]
+    raster_info_list = [
+        pygeoprocessing.get_raster_info(path_band[0])
+        for path_band in base_raster_path_band_const_list
+        if pygeoprocessing._is_raster_path_band_formatted(path_band)]
+    geospatial_info_set = set()
+    for raster_info in raster_info_list:
+        geospatial_info_set.add(raster_info['raster_size'])
+    if len(geospatial_info_set) > 1:
+        raise ValueError(
+            "Input Rasters are not the same dimensions. The "
+            "following raster are not identical %s" % str(
+                geospatial_info_set))
+
+
+def generate_site_shp_from_raster(base_raster_path, target_point_vector_path):
+    """Make a point vector from a raster.
+
+    Old Century is launched for a series of individual points, but the new
+    model is launched from rasters. Generate the point vector shapefile that is
+    used to index raster pixels to individual points.  This shapefile is used
+    to extract point-based inputs from raster-based inputs, and again to
+    generate raster-based results, which can be used to initialize or
+    regression test the new model, from a series of point-based results from
+    the old model. Point geometry is centered on the center of the pixel
+    square.
+
+    Parameters:
+        base_raster_path (string): path to a single band template raster.
+        target_point_vector_path (string): path to a point vector that will
+            contain points which are centered on each pixel box for as many
+            pixels in the raster. The feature attributes for each point will
+            include:
+                'x_coord': original x pixel center point in projected units of
+                    `base_raster_path`.
+                'y_coord': original y pixel center point in projected units of
+                    `base_raster_path`.
+                'raster_x': x coordinate of the raster pixel
+                'raster_y': y coordinate of the raster pixel
+                'site_id': unique integer for each point.
+
+    Returns:
+        None.
+    """
+    if os.path.exists(target_point_vector_path):
+        os.remove(target_point_vector_path)
+    esri_shapefile_driver = ogr.GetDriverByName('ESRI Shapefile')
+    target_vector = esri_shapefile_driver.CreateDataSource(
+        target_point_vector_path)
+    base_raster_info = pygeoprocessing.get_raster_info(base_raster_path)
+    target_layer = target_vector.CreateLayer(
+        target_point_vector_path,
+        srs=osr.SpatialReference(base_raster_info['projection']),
+        geom_type=ogr.wkbPoint)
+    target_layer.CreateField(ogr.FieldDefn("x_coord", ogr.OFTReal))
+    target_layer.CreateField(ogr.FieldDefn("y_coord", ogr.OFTReal))
+    target_layer.CreateField(ogr.FieldDefn("raster_x", ogr.OFTInteger))
+    target_layer.CreateField(ogr.FieldDefn("raster_y", ogr.OFTInteger))
+    target_layer.CreateField(ogr.FieldDefn("site_id", ogr.OFTInteger))
+
+    # Create the feature and set values
+    feature_defn = target_layer.GetLayerDefn()
+
+    geotransform = base_raster_info['geotransform']
+    for offset_map, raster_block in pygeoprocessing.iterblocks(
+            (base_raster_path, 1)):
+        n_y_block = raster_block.shape[0]
+        n_x_block = raster_block.shape[1]
+
+        # offset by .5 so we're in the center of the pixel
+        xoff = offset_map['xoff'] + 0.5
+        yoff = offset_map['yoff'] + 0.5
+
+        # calculate the projected x and y coordinate bounds for the block
+        x_range = numpy.linspace(
+            geotransform[0] + geotransform[1] * xoff,
+            geotransform[0] + geotransform[1] * (xoff + n_x_block - 1),
+            n_x_block)
+        y_range = numpy.linspace(
+            geotransform[3] + geotransform[5] * yoff,
+            geotransform[3] + geotransform[5] * (yoff + n_y_block - 1),
+            n_y_block)
+
+        # these are the x and y coordinate bounds for the pixel indexes
+        x_index_range = numpy.linspace(
+            xoff, xoff + (n_x_block - 1), n_x_block)
+        y_index_range = numpy.linspace(
+            yoff, yoff + (n_y_block - 1), n_y_block)
+
+        # we'll use this to avoid generating any nodata points
+        valid_mask = raster_block != base_raster_info['nodata']
+
+        # these indexes correspond to projected coordinates
+        x_vector, y_vector = numpy.meshgrid(x_range, y_range)
+        # these correspond to raster indexes
+        xi_vector, yi_vector = numpy.meshgrid(x_index_range, y_index_range)
+
+        site_id = 0
+        for value, x_coord, y_coord, raster_x, raster_y in zip(
+                raster_block[valid_mask],
+                x_vector[valid_mask], y_vector[valid_mask],
+                xi_vector[valid_mask], yi_vector[valid_mask]):
+            point = ogr.Geometry(ogr.wkbPoint)
+            point.AddPoint(x_coord, y_coord)
+            feature = ogr.Feature(feature_defn)
+            feature.SetGeometry(point)
+            feature.SetField("x_coord", x_coord)
+            feature.SetField("y_coord", y_coord)
+            feature.SetField("raster_x", raster_x)
+            feature.SetField("raster_y", raster_y)
+            feature.SetField("site_id", site_id)
+            target_layer.CreateFeature(feature)
+            feature = None
+            site_id += 1
+
+
 def generate_base_args():
-    """These raw inputs should work for both old and new models."""
+    """Inputs to run both new and old model."""
     args = {
             'starting_month': 1,
             'starting_year': 2016,
             'n_months': 22,
             'aoi_path': os.path.join(
-                SAMPLE_DATA, 'Manlai_soum.shp'),
+                SAMPLE_DATA, 'aoi_small.shp'),
             'bulk_density_path': os.path.join(
                 SAMPLE_DATA, 'soil', 'bulkd.tif'),
             'ph_path': os.path.join(
@@ -90,50 +216,77 @@ def generate_base_args():
                 SAMPLE_DATA, 'animal_trait_table.csv'),
             'animal_mgmt_layer_path': os.path.join(
                 SAMPLE_DATA, 'sheep_units_density_2016_monitoring_area.shp'),
+            'workspace_dir': SAMPLE_DATA,
+            'site_table': os.path.join(
+                DROPBOX_DIR,
+                "Mongolia/model_inputs/pycentury_dev/soil_table.csv"),
+            'grass_csv': os.path.join(
+                DROPBOX_DIR, "Mongolia/model_inputs/grass.csv"),
+            'herbivore_csv': os.path.join(
+                DROPBOX_DIR, "Mongolia/model_inputs/cashmere_goats.csv"),
+            'template_level': 'GH',
+            'fix_file': 'drygfix.100',
         }
     return args
 
 
 def generate_aligned_inputs():
-    """Resample all input rasters to align with point-based results.
+    """Align and resize raster inputs using same methods as in new model.
 
-    In order for results from the new forage model to be comparable to results
-    from point-based Century, all input rasters must be of resolution equal to
-    or larger than the raster that is used to summarize results from point-
-    based Century.  Resample and align all input rasters to that raster.
+    In the new model, raster-based inputs must be aligned and resampled to
+    ensure that they align exactly.  Before generating point-based inputs for
+    the old model, align and resample raw inputs using the same methods that
+    are used internally in the new model.
+
+    This code copied from (new) forage.py, lines 345-594.
+
+    Returns:
+        aligned_args, a full dict of inputs to run the new model, including
+            paths to raster inputs where all rasters have been aligned
     """
-    template_raster = os.path.join(
-        LOCAL_DIR, "Mongolia/CHIRPS/CHIRPS_pixels_1_soum.tif")
-    base_args = generate_base_args()
-    starting_month = int(base_args['starting_month'])
-    starting_year = int(base_args['starting_year'])
-    n_months = 22  # int(base_args['n_months'])
-    base_align_raster_list = [
-        base_args['bulk_density_path'],
-        base_args['ph_path'],
-        base_args['clay_proportion_path'],
-        base_args['silt_proportion_path'],
-        base_args['sand_proportion_path'],
-        base_args['site_param_spatial_index_path']]
+    args_new_model = generate_base_args()
+    aligned_args = args_new_model.copy()
+
+    starting_month = int(args_new_model['starting_month'])
+    starting_year = int(args_new_model['starting_year'])
+    n_months = int(args_new_model['n_months'])
+
+    # collect precipitation inputs
     temperature_month_set = set()
+    base_align_raster_path_id_map = {}
     for month_index in xrange(n_months):
         month_i = (starting_month + month_index - 1) % 12 + 1
         temperature_month_set.add(month_i)
         year = starting_year + (starting_month + month_index - 1) // 12
-        precip_path = base_args[
+        precip_path = args_new_model[
             'monthly_precip_path_pattern'].replace(
                 '<year>', str(year)).replace('<month>', '%.2d' % month_i)
-        base_align_raster_list.append(precip_path)
+        base_align_raster_path_id_map['precip_%d' % month_index] = precip_path
+
+    # collect temperature inputs
     for substring in ['min', 'max']:
         for month_i in temperature_month_set:
-            monthly_temp_path = base_args[
+            monthly_temp_path = args_new_model[
                 '%s_temp_path_pattern' % substring].replace(
                     '<month>', '%.2d' % month_i)
-            base_align_raster_list.append(monthly_temp_path)
-    pft_dir = os.path.dirname(
-        base_args['veg_spatial_composition_path_pattern'])
+            base_align_raster_path_id_map[
+                '%s_temp_%d' % (substring, month_i)] = monthly_temp_path
+
+    # soil inputs
+    for soil_type in ['clay', 'silt', 'sand']:
+        base_align_raster_path_id_map[soil_type] = (
+            args_new_model['%s_proportion_path' % soil_type])
+    base_align_raster_path_id_map['bulk_d_path'] = args_new_model[
+        'bulk_density_path']
+    base_align_raster_path_id_map['ph_path'] = args_new_model['ph_path']
+
+    # site and pft inputs
+    base_align_raster_path_id_map['site_index'] = (
+        args_new_model['site_param_spatial_index_path'])
+    pft_dir = os.path.dirname(args_new_model[
+        'veg_spatial_composition_path_pattern'])
     pft_basename = os.path.basename(
-        base_args['veg_spatial_composition_path_pattern'])
+        args_new_model['veg_spatial_composition_path_pattern'])
     files = [
         f for f in os.listdir(pft_dir) if os.path.isfile(
             os.path.join(pft_dir, f))]
@@ -142,78 +295,65 @@ def generate_aligned_inputs():
         m for m in [pft_regex.search(f) for f in files] if m is not None]
     pft_id_set = set([int(m.group(1)) for m in pft_matches])
     for pft_i in pft_id_set:
-        pft_path = base_args['veg_spatial_composition_path_pattern'].replace(
+        pft_path = args_new_model[
+            'veg_spatial_composition_path_pattern'].replace(
             '<PFT>', '%d' % pft_i)
-        base_align_raster_list.append(pft_path)
+        base_align_raster_path_id_map['pft_%d' % pft_i] = pft_path
 
-    aligned_raster_dir = os.path.join(SAMPLE_DATA, 'aligned_inputs')
-    if not os.path.exists(aligned_raster_dir):
-        os.makedirs(aligned_raster_dir)
-        source_input_path_list = sorted(base_align_raster_list)
-        aligned_input_path_list = [os.path.join(
-            aligned_raster_dir, os.path.basename(path))
-            for path in source_input_path_list]
-        source_input_path_list.append(template_raster)
-        aligned_input_path_list.append(
-            os.path.join(aligned_raster_dir,
-                         os.path.basename(template_raster)))
-        target_pixel_size = pygeoprocessing.get_raster_info(
-            template_raster)['pixel_size']
-        try:
-            pygeoprocessing.align_and_resize_raster_stack(
-                source_input_path_list, aligned_input_path_list,
-                ['near'] * len(source_input_path_list),
-                target_pixel_size, 'intersection',
-                raster_align_index=len(source_input_path_list) - 1)
-        except ValueError, e:
-            print "Error aligning: " + str(e)
-            raise
+    # find the smallest target_pixel_size
+    target_pixel_size = min(*[
+        pygeoprocessing.get_raster_info(path)['pixel_size']
+        for path in base_align_raster_path_id_map.values()],
+        key=lambda x: (abs(x[0]), abs(x[1])))
 
-    aligned_args = base_args
-    aligned_args['bulk_density_path'] = os.path.join(
-        aligned_raster_dir, os.path.basename(base_args['bulk_density_path']))
-    aligned_args['ph_path'] = os.path.join(
-        aligned_raster_dir, os.path.basename(base_args['ph_path']))
-    aligned_args['clay_proportion_path'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['clay_proportion_path']))
-    aligned_args['silt_proportion_path'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['silt_proportion_path']))
-    aligned_args['sand_proportion_path'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['sand_proportion_path']))
-    aligned_args['monthly_precip_path_pattern'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['monthly_precip_path_pattern']))
-    aligned_args['min_temp_path_pattern'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['min_temp_path_pattern']))
-    aligned_args['max_temp_path_pattern'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['max_temp_path_pattern']))
-    aligned_args['site_param_spatial_index_path'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['site_param_spatial_index_path']))
-    aligned_args['veg_spatial_composition_path_pattern'] = os.path.join(
-        aligned_raster_dir,
-        os.path.basename(base_args['veg_spatial_composition_path_pattern']))
+    # set up a dictionary that uses the same keys as
+    # 'base_align_raster_path_id_map' to point to the clipped/resampled
+    # rasters
+    aligned_raster_dir = os.path.join(
+        args_new_model['workspace_dir'], 'aligned_inputs')
+    if os.path.exists(aligned_raster_dir):
+        shutil.rmtree(aligned_raster_dir)
+    os.makedirs(aligned_raster_dir)
+
+    for arg_key in [
+            'bulk_density_path', 'ph_path', 'clay_proportion_path',
+            'silt_proportion_path', 'sand_proportion_path',
+            'monthly_precip_path_pattern', 'min_temp_path_pattern',
+            'max_temp_path_pattern', 'site_param_spatial_index_path',
+            'veg_spatial_composition_path_pattern']:
+        aligned_args[arg_key] = os.path.join(
+            aligned_raster_dir, os.path.basename(args_new_model[arg_key]))
+
+    # align all the base inputs to be the minimum known pixel size and to
+    # only extend over their combined intersections
+    source_input_path_list = [
+        base_align_raster_path_id_map[k] for k in sorted(
+            base_align_raster_path_id_map.iterkeys())]
+    aligned_input_path_list = [
+        os.path.join(aligned_raster_dir, os.path.basename(path)) for path in
+        source_input_path_list]
+
+    pygeoprocessing.align_and_resize_raster_stack(
+        source_input_path_list, aligned_input_path_list,
+        ['near'] * len(aligned_input_path_list),
+        target_pixel_size, 'intersection',
+        base_vector_path_list=[args_new_model['aoi_path']])
     return aligned_args
 
 
 def generate_inputs_for_old_model(processing_dir, input_dir):
-    """Generate inputs for the old forage model that used the Century
-    executable. Most of this taken from 'mongolia_workflow()' in the script
-    process_regional_inputs.py. Template site and schedule files should be
-    the same as those used to generate inputs for new model.
-    Returns a dictionary of inputs that can be used to launch the old model
-    for many sites."""
+    """Generate inputs for the old forage model.
 
-    input_args = generate_aligned_inputs()
+    The old model uses the Century executable written in Fortran. Its inputs
+    pertain to a single point. To emulate a gridded raster, we can run the
+    model for a series of points in a regular grid.  Generate the inputs to
+    run the model in a gridded series of points.
 
+    Returns:
+        None
+    """
     def write_soil_table(site_shp, save_as):
-        """Make soil table to use as input for site files"""
-
+        """Make soil table to use as input for site files."""
         # make a temporary copy of the point shapefile to append
         # worldclim values
         tempdir = tempfile.mkdtemp()
@@ -221,11 +361,11 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         site_shp = os.path.join(tempdir, 'points.shp')
         arcpy.Copy_management(source_shp, site_shp)
 
-        raster_files = [input_args['bulk_density_path'],
-                        input_args['ph_path'],
-                        input_args['clay_proportion_path'],
-                        input_args['silt_proportion_path'],
-                        input_args['sand_proportion_path']]
+        raster_files = [aligned_args['bulk_density_path'],
+                        aligned_args['ph_path'],
+                        aligned_args['clay_proportion_path'],
+                        aligned_args['silt_proportion_path'],
+                        aligned_args['sand_proportion_path']]
         field_list = [os.path.basename(r)[:-4] for r in raster_files]
         ex_list = zip(raster_files, field_list)
         arcpy.sa.ExtractMultiValuesToPoints(site_shp, ex_list)
@@ -237,16 +377,16 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             for row in cursor:
                 for f_idx in range(len(field_list)):
                     temp_dict[field_list[f_idx]].append(row[f_idx])
-        soil_df = pd.DataFrame.from_dict(temp_dict).set_index('site_id')
+        soil_df = pandas.DataFrame.from_dict(temp_dict).set_index('site_id')
 
-        bulkd_key = os.path.basename(input_args['bulk_density_path'])[:-4][:10]
-        ph_key = os.path.basename(input_args['ph_path'])[:-4][:10]
+        bulkd_key = os.path.basename(aligned_args['bulk_density_path'])[:-4][:10]
+        ph_key = os.path.basename(aligned_args['ph_path'])[:-4][:10]
         clay_key = os.path.basename(
-            input_args['clay_proportion_path'])[:-4][:10]
+            aligned_args['clay_proportion_path'])[:-4][:10]
         silt_key = os.path.basename(
-            input_args['silt_proportion_path'])[:-4][:10]
+            aligned_args['silt_proportion_path'])[:-4][:10]
         sand_key = os.path.basename(
-            input_args['sand_proportion_path'])[:-4][:10]
+            aligned_args['sand_proportion_path'])[:-4][:10]
         # check units
         soil_df = soil_df[soil_df[bulkd_key] > 0]
         # bulk density should be between 0.8 and 2
@@ -291,9 +431,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         soil_df.to_csv(save_as)
 
     def write_temperature_table(site_shp, save_as):
-        """Make a table of max and min monthly temperature for points where
-        we will launch the old model."""
-
+        """Make a table of max and min monthly temperature for points."""
         tempdir = tempfile.mkdtemp()
         # make a temporary copy of the point shapefile to append
         # worldclim values
@@ -302,8 +440,8 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         arcpy.Copy_management(source_shp, point_shp)
 
         temperature_month_set = set()
-        starting_month = int(input_args['starting_month'])
-        for month_index in xrange(int(input_args['n_months'])):
+        starting_month = int(aligned_args['starting_month'])
+        for month_index in xrange(int(aligned_args['n_months'])):
             month_i = (starting_month + month_index - 1) % 12 + 1
             temperature_month_set.add(month_i)
 
@@ -311,7 +449,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         field_list = []
         for substring in ['min', 'max']:
             for month_i in temperature_month_set:
-                monthly_temp_path = input_args[
+                monthly_temp_path = aligned_args[
                     '%s_temp_path_pattern' % substring].replace(
                     '<month>', '%.2d' % month_i)
                 raster_files.append(monthly_temp_path)
@@ -333,12 +471,12 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                     elif field.startswith('max'):
                         temp_dict['tmax'].append(row[f_idx])
                     else:
-                        raise Exception, "value not recognized"
+                        raise ValueError("value not recognized")
                 temp_dict['month'].extend(temperature_month_set)
         for key in temp_dict.keys():
             if len(temp_dict[key]) == 0:
                 del temp_dict[key]
-        temp_df = pd.DataFrame.from_dict(temp_dict)
+        temp_df = pandas.DataFrame.from_dict(temp_dict)
         # check units
         while max(temp_df['tmax']) > 100:
             temp_df['tmax'] = temp_df['tmax'] / 10.
@@ -346,9 +484,10 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         temp_df.to_csv(save_as, index=False)
 
     def write_worldclim_precip_table(site_shp, save_as):
-        """Write precipitation table from Worldclim average precipitation, to
-        be used for spin-up simulations."""
+        """Write precipitation table from Worldclim average precipitation.
 
+        Worldclim average precipitation should be used for spin-up simulations.
+        """
         worldclim_pattern = os.path.join(
             LOCAL_DIR, "Mongolia/Worldclim/precip/wc2.0_30s_prec_<month>.tif")
 
@@ -388,24 +527,34 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                     month = int(field)
                     prec_dict['prec'].append(row[f_idx])
                 prec_dict['month'].extend(month_list)
-        prec_df = pd.DataFrame.from_dict(prec_dict)
+        prec_df = pandas.DataFrame.from_dict(prec_dict)
         # divide raw Worldclim precip by 10
         prec_df['prec'] = prec_df['prec'] / 10.
         prec_df.to_csv(save_as, index=False)
 
-    def write_precip_table_from_rasters(precip_dir, site_shp, save_as):
-        """Make a table of precipitation from a series of rasters inside
-        precip_dir. This adapted from Rich's script point_precip_fetch.py."""
+    def write_precip_table_from_rasters(aligned_args, site_shp, save_as):
+        """Make a table of precipitation from a series of rasters.
 
+        This adapted from Rich's script point_precip_fetch.py.
+        """
         task_graph = taskgraph.TaskGraph('taskgraph_cache', 0)
         task_graph.close()
         task_graph.join()
 
-        # index all raster paths by their basename
+        starting_month = int(aligned_args['starting_month'])
+        starting_year = int(aligned_args['starting_year'])
+        n_months = int(aligned_args['n_months'])
+
+        # get precip rasters from args dictionary, index each by their basename
         raster_path_id_map = {}
-        for raster_path in glob.glob(os.path.join(precip_dir, '*.tif')):
-            basename = os.path.splitext(os.path.basename(raster_path))[0]
-            raster_path_id_map[basename] = raster_path
+        for month_index in xrange(n_months):
+            month_i = (starting_month + month_index - 1) % 12 + 1
+            year = starting_year + (starting_month + month_index - 1) // 12
+            precip_path = aligned_args[
+                'monthly_precip_path_pattern'].replace(
+                    '<year>', str(year)).replace('<month>', '%.2d' % month_i)
+            basename = os.path.basename(precip_path)
+            raster_path_id_map[basename] = precip_path
 
         # pre-fetch point geometry and IDs
         point_vector = ogr.Open(site_shp)
@@ -439,7 +588,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         sampled_precip_data_list = []
         for field_name in point_field_name_list:
             sampled_precip_data_list.append(
-                pd.Series(
+                pandas.Series(
                     data=feature_attributes_fieldname_map[field_name],
                     name=field_name))
         for basename in sorted(raster_path_id_map.iterkeys()):
@@ -456,31 +605,30 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                 sample_list.append(
                     band.ReadAsArray(raster_x, raster_y, 1, 1)[0, 0])
             sampled_precip_data_list.append(
-                pd.Series(data=sample_list, name=basename))
+                pandas.Series(data=sample_list, name=basename))
 
-        report_table = pd.DataFrame(data=sampled_precip_data_list)
+        report_table = pandas.DataFrame(data=sampled_precip_data_list)
         report_table = report_table.transpose()
         report_table.to_csv(save_as)
 
-    def write_wth_files(soil_table, temperature_table, precip_table,
-                        save_dir):
+    def write_wth_files(
+            soil_table, temperature_table, precip_table, save_dir):
         """Generate .wth files from temperature and precip tables."""
-
-        temperature_df = pd.read_csv(temperature_table)
-        prec_df = pd.read_csv(precip_table).set_index("site_id")
-        starting_month = int(input_args['starting_month'])
-        starting_year = int(input_args['starting_year'])
+        temperature_df = pandas.read_csv(temperature_table)
+        prec_df = pandas.read_csv(precip_table).set_index("site_id")
+        starting_month = int(aligned_args['starting_month'])
+        starting_year = int(aligned_args['starting_year'])
 
         year_list = list()
-        for month_index in xrange(int(input_args['n_months'])):
+        for month_index in xrange(int(aligned_args['n_months'])):
             year_list.append(
                 starting_year + (starting_month + month_index - 1) // 12)
         year_list = set(year_list)
 
-        site_df = pd.read_csv(soil_table)
+        site_df = pandas.read_csv(soil_table)
         site_list = site_df.site_id.unique().tolist()
         precip_basename = os.path.basename(
-            input_args['monthly_precip_path_pattern'])[:-4]
+            aligned_args['monthly_precip_path_pattern'])
         for site in site_list:
             temp_subs = temperature_df.loc[temperature_df['site'] == site]
             temp_subs = temp_subs.set_index('month')
@@ -496,7 +644,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                                     '<month>', '%.2d' % mon)
                     try:
                         prec = prec_df.loc[site, column]
-                    except:
+                    except KeyError:
                         prec = 0.
                     trans_dict[mon].append(prec)
                 trans_dict['year'].append(int(year))
@@ -509,7 +657,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                 for mon in range(1, 13):
                     tmax = temp_subs.get_value(mon, 'tmax')
                     trans_dict[mon].append(tmax)
-            df = pd.DataFrame(trans_dict)
+            df = pandas.DataFrame(trans_dict)
             cols = df.columns.tolist()
             cols = cols[-2:-1] + cols[-1:] + cols[:-2]
             df = df[cols]
@@ -521,28 +669,31 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             df = df.drop('sort_col', 1)
             formats = ['%4s', '%6s'] + ['%7.2f'] * 12
             save_as = os.path.join(save_dir, '{}.wth'.format(site))
-            np.savetxt(save_as, df.values, fmt=formats, delimiter='')
+            numpy.savetxt(save_as, df.values, fmt=formats, delimiter='')
 
-    def write_site_files(soil_table, worldclim_precip_table,
-                         temperature_table, inputs_dir):
-        """Write the site.100 file for each point simulation, using the
-        template_100 as a template, copying other site characteristics
-        from the soil table, and taking average climate inputs from
-        Worldclim temperature and precipitation tables."""
+    def write_site_files(
+            aligned_args, soil_table, worldclim_precip_table,
+            temperature_table, inputs_dir):
+        """Write the site.100 file for each point simulation.
 
-        prec_df = pd.read_csv(worldclim_precip_table)
-        temp_df = pd.read_csv(temperature_table)
+        Use the template_100 as a template and copy other site characteristics
+        from the soil table.  Take average climate inputs from Worldclim
+        temperature and precipitation tables.
+        """
+        prec_df = pandas.read_csv(worldclim_precip_table)
+        temp_df = pandas.read_csv(temperature_table)
 
-        bulkd_key = os.path.basename(input_args['bulk_density_path'])[:-4][:10]
-        ph_key = os.path.basename(input_args['ph_path'])[:-4][:10]
+        bulkd_key = os.path.basename(
+            aligned_args['bulk_density_path'])[:-4][:10]
+        ph_key = os.path.basename(aligned_args['ph_path'])[:-4][:10]
         clay_key = os.path.basename(
-            input_args['clay_proportion_path'])[:-4][:10]
+            aligned_args['clay_proportion_path'])[:-4][:10]
         silt_key = os.path.basename(
-            input_args['silt_proportion_path'])[:-4][:10]
+            aligned_args['silt_proportion_path'])[:-4][:10]
         sand_key = os.path.basename(
-            input_args['sand_proportion_path'])[:-4][:10]
+            aligned_args['sand_proportion_path'])[:-4][:10]
 
-        in_list = pd.read_csv(soil_table).to_dict(orient="records")
+        in_list = pandas.read_csv(soil_table).to_dict(orient="records")
         for inputs_dict in in_list:
             prec_subs = prec_df.loc[prec_df['site'] == inputs_dict['site_id']]
             prec_subs = prec_subs.set_index('month')
@@ -622,16 +773,17 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                             line = old_file.next()
                         except StopIteration:
                             break
-            save_as = os.path.join(inputs_dir, '{}.100'.format(
-                                                 int(inputs_dict['site_id'])))
+            save_as = os.path.join(
+                inputs_dir, '{}.100'.format(int(inputs_dict['site_id'])))
             shutil.copyfile(abs_path, save_as)
             os.remove(abs_path)
 
     def write_sch_files(soil_table, save_dir):
-        """Write the schedule file for each point simulation, using the
-        template site and schedule files and copying other site characteristics
-        from the soil table."""
+        """Write the schedule file for each point simulation.
 
+        Use the template site and schedule files and copy other site
+        characteristics from the soil table.
+        """
         def copy_sch_file(template, site_name, save_as, wth_file=None):
             fh, abs_path = mkstemp()
             os.close(fh)
@@ -658,8 +810,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
 
             shutil.copyfile(abs_path, save_as)
             os.remove(abs_path)
-
-        site_df = pd.read_csv(soil_table)
+        site_df = pandas.read_csv(soil_table)
         site_list = site_df.site_id.unique().tolist()
         for site in site_list:
             save_as = os.path.join(save_dir, '{}.sch'.format(site))
@@ -668,56 +819,43 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             save_as = os.path.join(save_dir, '{}_hist.sch'.format(site))
             copy_sch_file(TEMPLATE_HIST, site, save_as)
 
-    precip_dir = os.path.dirname(input_args['monthly_precip_path_pattern'])
-    soil_table = os.path.join(processing_dir, "soil_table.csv")
+    aligned_args = generate_aligned_inputs()
+    soil_table = aligned_args['site_table']
     precip_table = os.path.join(processing_dir, "chirps_precip.csv")
     worldclim_precip_table = os.path.join(
         processing_dir, "worldclim_precip.csv")
     temperature_table = os.path.join(
         processing_dir, "temperature_table.csv")
 
-    # write_soil_table(GRID_POINT_SHP, soil_table)
-    # write_temperature_table(GRID_POINT_SHP, temperature_table)
-    # write_precip_table_from_rasters(precip_dir, GRID_POINT_SHP, precip_table)
+    # generate GRID_POINT_SHP from one of the aligned inputs, using the aligned
+    # inputs as template raster. GRID_POINT_SHP is used to index raster pixels
+    # to individual points where we launch old Century for each point, then
+    # reassemble into a raster later on
+    generate_site_shp_from_raster(
+        aligned_args['site_param_spatial_index_path'], GRID_POINT_SHP)
+
+    # make point-based inputs from rasters, drawing values from pixels
+    # intersecting each point in GRID_POINT_SHP
+    write_soil_table(GRID_POINT_SHP, soil_table)
+    write_temperature_table(GRID_POINT_SHP, temperature_table)
+
+    write_precip_table_from_rasters(aligned_args, GRID_POINT_SHP, precip_table)
     if not os.path.exists(input_dir):
         os.makedirs(input_dir)
-    # write_wth_files(
-        # soil_table, temperature_table, precip_table, input_dir)
-
-    # write_worldclim_precip_table(GRID_POINT_SHP, worldclim_precip_table)
-    # write_site_files(
-        # soil_table, worldclim_precip_table, temperature_table, input_dir)
-    # write_sch_files(soil_table, input_dir)
-
-    # other inputs I don't know how to store yet
-    grass_table = os.path.join(
-        DROPBOX_DIR, "Mongolia/model_inputs/grass.csv")
-    herb_table = os.path.join(
-        DROPBOX_DIR, "Mongolia/model_inputs/cashmere_goats.csv")
-    template_level = 'GH'
-    fix_file = 'drygfix.100'
-
-    old_model_inputs_dict = {
-        'site_table': soil_table,
-        'grass_csv': grass_table,
-        'herbivore_csv': herb_table,
-        'template_level': template_level,
-        'fix_file': fix_file,
-    }
-    return old_model_inputs_dict
+    write_wth_files(
+        soil_table, temperature_table, precip_table, input_dir)
+    write_worldclim_precip_table(GRID_POINT_SHP, worldclim_precip_table)
+    write_site_files(
+        aligned_args, soil_table, worldclim_precip_table, temperature_table,
+        input_dir)
+    write_sch_files(soil_table, input_dir)
 
 
-def launch_old_model(
-        old_model_inputs_dict, old_model_input_dir, old_model_output_dir):
-    """Run the old model with sample inputs. Most of this taken from the
-    script Mongolia_monitoring_sites_launch_forage.py (i.e., results we
-    generated for AGU in 2017)"""
-
+def launch_old_model(old_model_input_dir, old_model_output_dir):
+    """Run the old model for a series of points."""
     def modify_stocking_density(herbivore_csv, new_sd):
-        """Modify the stocking density in the herbivore csv used as input to
-        the forage model."""
-
-        df = pd.read_csv(herbivore_csv)
+        """Modify the stocking density in the herbivore csv."""
+        df = pandas.read_csv(herbivore_csv)
         df = df.set_index(['index'])
         assert len(df) == 1, "We can only handle one herbivore type"
         df['stocking_density'] = df['stocking_density'].astype(float)
@@ -725,11 +863,12 @@ def launch_old_model(
         df.to_csv(herbivore_csv)
 
     def edit_grass_csv(grass_csv, label):
-        """Edit the grass csv to reflect a new label, which points to the
-        Century inputs, so we can use one grass csv for multiple sites
-        Century inputs must exist."""
+        """Edit the grass csv to reflect a new label.
 
-        df = pd.read_csv(grass_csv)
+        The new label which points to the Century inputs. This allows us to use
+        one grass csv for multiple sites. Century inputs must exist.
+        """
+        df = pandas.read_csv(grass_csv)
         df = df.set_index(['index'])
         assert len(df) == 1, "We can only handle one grass type"
         df.set_value(0, 'label', label)
@@ -747,17 +886,17 @@ def launch_old_model(
             'num_months': input_args['n_months'],
             'mgmt_threshold': 300.,
             'century_dir': CENTURY_DIR,
-            'template_level': old_model_inputs_dict['template_level'],
-            'fix_file': old_model_inputs_dict['fix_file'],
+            'template_level': input_args['template_level'],
+            'fix_file': input_args['fix_file'],
             'user_define_protein': 1,
             'user_define_digestibility': 0,
-            'herbivore_csv': old_model_inputs_dict['herbivore_csv'],
-            'grass_csv': old_model_inputs_dict['grass_csv'],
+            'herbivore_csv': input_args['herbivore_csv'],
+            'grass_csv': input_args['grass_csv'],
             }
 
     modify_stocking_density(old_model_args['herbivore_csv'], 0)  # TODO relate sd to new model
-    site_list = pd.read_csv(
-        old_model_inputs_dict['site_table']).to_dict(orient='records')
+    site_list = pandas.read_csv(
+        input_args['site_table']).to_dict(orient='records')
     outer_outdir = old_model_output_dir
     for site in site_list:
         old_model_args['latitude'] = site['latitude']
@@ -773,22 +912,25 @@ def launch_old_model(
 
 
 def table_to_raster(
-        table, field_list, grid_point_shp, save_dir, save_as_field_list=None):
-    """Generate a series of rasters from values in the fields `field_list` in
-    `table`. First join the values from the table to a shapefile containing
-    points, then generate a raster for each field in `field_list` from the
-    points shapefile.
-    `table` must contain a field `site_id` that can be matched to `site_id`
-    in the shapefile `grid_point_shp`.
-    If `save_as_field_list` is supplied, it must contain the basename for each
-    raster to be saved, in the same order as `field_list`."""
+        table, template_raster_path, field_list, grid_point_shp, save_dir,
+        save_as_field_list=None):
+    """Generate a series of rasters from values in a table.
 
-    cell_size = 0.05  # hard coded from CHIRPS
+    One raster is generated for each of the fields `field_list` in `table`.
+    First join the values from the table to a shapefile containing points,
+    then generate a raster for each field in `field_list` from the points
+    shapefile. `table` must contain a field `site_id` that can be matched to
+    `site_id` in the shapefile `grid_point_shp`.
+    If `save_as_field_list` is supplied, it must contain the basename for each
+    raster to be saved, in the same order as `field_list`.
+    """
+    cell_size = pygeoprocessing.get_raster_info(
+        template_raster_path)['pixel_size'][0]
     tempdir = tempfile.mkdtemp()
     arcpy.env.workspace = tempdir
     arcpy.env.overwriteOutput = True
 
-    table_df = pd.read_csv(table)
+    table_df = pandas.read_csv(table)
     table_df = table_df[['site_id'] + field_list].set_index('site_id')
     temp_table_out = os.path.join(tempdir, 'temp_table.csv')
     table_df.to_csv(temp_table_out)
@@ -821,16 +963,19 @@ def table_to_raster(
         raster_path = os.path.join(save_dir, '{}.tif'.format(field_name))
         arcpy.PointToRaster_conversion(
             temp_shp_out, shp_field, raster_path, cellsize=cell_size)
+    check_raster_dimensions(raster_path, template_raster_path)
 
 
 def old_model_results_to_table(
-        old_model_inputs_dict, old_model_output_dir, results_table_path,
-        output_list, start_time, end_time):
-    """Collect results from old model to use as initial values or targets for
-    regression testing of new model.  Century outputs to collect should be
-    supplied in output_list. Outputs will be collected that fall in
-    [start_time, end_time]."""
+        old_model_output_dir, results_table_path, output_list, start_time,
+        end_time):
+    """Collect results from old model.
 
+    Results from old model may be used as initial values or targets for
+    regression testing of new model.  Century outputs to collect should be
+    supplied in `output_list`. Outputs will be collected that fall in
+    [start_time, end_time].
+    """
     input_args = generate_aligned_inputs()
     output_list.insert(0, 'time')
 
@@ -842,7 +987,7 @@ def old_model_results_to_table(
     last_year = starting_year + (starting_month + month_i - 1) // 12
     century_out_basename = 'CENTURY_outputs_m{:d}_y{:d}'.format(
                                                         last_month, last_year)
-    site_df = pd.read_csv(old_model_inputs_dict['site_table'])
+    site_df = pandas.read_csv(input_args['site_table'])
     df_list = []
     failed_sites = []
     for site in site_df['site_id']:
@@ -851,7 +996,7 @@ def old_model_results_to_table(
                                         century_out_basename,
                                         '{}.lis'.format(int(site)))
         try:
-            cent_df = pd.read_fwf(century_out_file, skiprows=[1])
+            cent_df = pandas.read_fwf(century_out_file, skiprows=[1])
         except IOError:
             failed_sites.append(site)
             continue
@@ -869,7 +1014,7 @@ def old_model_results_to_table(
         except KeyError:
             # try again, specifying widths explicitly
             widths = [16] * 79
-            cent_df = pd.read_fwf(
+            cent_df = pandas.read_fwf(
                 century_out_file, skiprows=[1], widths=widths)
             # mistakes in Century writing results
             if 'minerl(10,1' in cent_df.columns.values:
@@ -887,11 +1032,12 @@ def old_model_results_to_table(
         outputs = outputs.loc[:, ~outputs.columns.duplicated()]
         outputs['site_id'] = site
         df_list.append(outputs)
-    century_results = pd.concat(df_list)
+    century_results = pandas.concat(df_list)
 
     # reshape to "wide" format
-    century_reshape = pd.pivot_table(century_results, values=output_list[1:],
-                                     index='site_id', columns='time')
+    century_reshape = pandas.pivot_table(
+        century_results, values=output_list[1:], index='site_id',
+        columns='time')
     cols = [
         '{}_{}_{}'.format(
             c[0], convert_to_year_month(c[1])[0],
@@ -903,14 +1049,17 @@ def old_model_results_to_table(
     print failed_sites
 
 
-def generate_inputs_for_new_model(old_model_inputs_dict):
-    """Generate inputs for the new forage model that includes plant production
-    model written in Python.  This should take the same raw inputs as
-    'generate_inputs_for_old_model()'."""
+def century_params_to_new_model_params():
+    """Generate parameter inputs for the new forage model.
 
-    new_model_args = generate_aligned_inputs()
+    Site and pft parameters for the new forage model come from various
+    files used by Century.  Gather these parameters together from all
+    Century parameter files and format them as csvs as expected by new
+    forage model.
+    """
+    new_model_args = generate_base_args()
     # parameter table containing only necessary parameters
-    parameter_table = pd.read_csv(
+    parameter_table = pandas.read_csv(
         os.path.join(
             DROPBOX_DIR,
             "Forage_model/CENTURY4.6/GK_doc/Century_parameter_table.csv"))
@@ -972,7 +1121,7 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     graz_file = os.path.join(CENTURY_DIR, 'graz.100')
     with open(graz_file, 'rb') as grazparams:
         for line in grazparams:
-            if line.startswith(old_model_inputs_dict['template_level']):
+            if line.startswith(new_model_args['template_level']):
                 line = next(grazparams)
                 while 'FECLIG' not in line:
                     label = re.sub(r"\'", "", line[13:].strip()).lower()
@@ -991,8 +1140,8 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
             if label in parameters_to_keep:
                 value = float(line[:13].strip())
                 master_param_dict[label] = value
-    # get fixed parameters from old_model_inputs_dict['fix_file']
-    with open(os.path.join(CENTURY_DIR, old_model_inputs_dict['fix_file']),
+    # get fixed parameters from new_model_args['fix_file']
+    with open(os.path.join(CENTURY_DIR, new_model_args['fix_file']),
               'rb') as siteparam:
         for line in siteparam:
             label = re.sub(r"\'", "", line[13:].strip()).lower()
@@ -1026,32 +1175,34 @@ def generate_inputs_for_new_model(old_model_inputs_dict):
     if senescence_month:
         PFT_param_dict['senescence_month'] = (
             ','.join([str(m) for m in list(senescence_month)]))
-    grass_df = pd.read_csv(old_model_inputs_dict['grass_csv'])
+    grass_df = pandas.read_csv(new_model_args['grass_csv'])
     grass_df = grass_df[['type', 'cprotein_green', 'cprotein_dead']]
-    pft_df = pd.DataFrame(PFT_param_dict, index=[0])
+    pft_df = pandas.DataFrame(PFT_param_dict, index=[0])
     col_rename_dict = {c: century_to_rp(c) for c in pft_df.columns.values}
     pft_df.rename(index=int, columns=col_rename_dict, inplace=True)
-    pft_table = pd.concat([grass_df, pft_df], axis=1)
+    pft_table = pandas.concat([grass_df, pft_df], axis=1)
     pft_table.to_csv(new_model_args['veg_trait_path'], index=False)
 
     # make site parameter table
-    site_df = pd.DataFrame(site_param_dict, index=[0])
+    site_df = pandas.DataFrame(site_param_dict, index=[0])
     col_rename_dict = {c: century_to_rp(c) for c in site_df.columns.values}
     site_df.rename(index=int, columns=col_rename_dict, inplace=True)
     site_df.to_csv(new_model_args['site_param_path'], index=False)
 
-    # TODO: get animal parameters from old_model_inputs_dict['herbivore_csv']
+    # TODO: get animal parameters from new_model_args['herbivore_csv']
 
 
 def initial_variables_to_outvars():
-    """Make new outvars file (the output variables collected by Century) for
-    collection of variables needed to initialize new model."""
+    """Make new outvars file from variables needed to initialize new model.
+
+    The outvars file contains output variables collected by Century.
+    """
     initial_var_table = os.path.join(
         DROPBOX_DIR,
         "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
     outvars_table = os.path.join(CENTURY_DIR, "outvars.txt")
 
-    init_var_df = pd.read_csv(initial_var_table)
+    init_var_df = pandas.read_csv(initial_var_table)
     init_var_df['outvars'] = [
         v.lower() for v in init_var_df.State_variable_Century]
     outvar_df = init_var_df['outvars']
@@ -1059,9 +1210,11 @@ def initial_variables_to_outvars():
 
 
 def generate_initialization_rasters():
-    """Run the old model and collect results to be used as intialization
-    rasters for new model."""
+    """Run the old model and collect results for intialization.
 
+    The new model may be initialized with rasters for each state variable.
+    Collect these rasters from results of a run of the old model.
+    """
     initialization_dir = (
         "C:/Users/ginge/Documents/NatCap/sample_inputs/initialization_data")
     if not os.path.exists(initialization_dir):
@@ -1077,14 +1230,13 @@ def generate_initialization_rasters():
     end_time = start_time
 
     initial_variables_to_outvars()
-    launch_old_model(
-        old_model_inputs_dict, old_model_input_dir, old_model_output_dir)
+    launch_old_model(old_model_input_dir, old_model_output_dir)
 
     # intialization rasters
     outvar_csv = os.path.join(
         DROPBOX_DIR,
         "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
-    outvar_df = pd.read_csv(outvar_csv)
+    outvar_df = pandas.read_csv(outvar_csv)
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
     for sbstr in ['PFT', 'site']:
         output_list = outvar_df[
@@ -1094,8 +1246,8 @@ def generate_initialization_rasters():
         results_table_path = os.path.join(
             old_model_output_dir, '{}_initial.csv'.format(sbstr))
         old_model_results_to_table(
-            old_model_inputs_dict, old_model_output_dir, results_table_path,
-            output_list, start_time, end_time)
+            old_model_output_dir, results_table_path, output_list, start_time,
+            end_time)
         save_as_field_list = (
             outvar_df[outvar_df.Property_of == sbstr].
             State_variable_rangeland_production.tolist())
@@ -1106,13 +1258,13 @@ def generate_initialization_rasters():
             list must be of equal length to field list"""
         save_dir = initialization_dir
         table_to_raster(
-            results_table_path, field_list, GRID_POINT_SHP, save_dir,
+            results_table_path, input_args['site_param_spatial_index_path'],
+            field_list, GRID_POINT_SHP, save_dir,
             save_as_field_list=save_as_field_list)
 
 
 def generate_regression_tests():
-    """Run the old model and collect results to be used as regression testing
-    target rasters for new model."""
+    """Collect regression results from a run of the old model."""
     regression_test_dir = (
         "C:/Users/ginge/Documents/NatCap/regression_test_data")
     if not os.path.exists(regression_test_dir):
@@ -1128,11 +1280,10 @@ def generate_regression_tests():
     end_time = start_time
 
     initial_variables_to_outvars()
-    launch_old_model(
-        old_model_inputs_dict, old_model_input_dir, old_model_output_dir)
+    launch_old_model(old_model_input_dir, old_model_output_dir)
 
     # regression testing rasters
-    outvar_df = pd.read_csv(
+    outvar_df = pandas.read_csv(
         os.path.join(
             DROPBOX_DIR,
             "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv"))
@@ -1145,8 +1296,8 @@ def generate_regression_tests():
         results_table_path = os.path.join(
             old_model_output_dir, '{}_initial.csv'.format(sbstr))
         old_model_results_to_table(
-            old_model_inputs_dict, old_model_output_dir, results_table_path,
-            output_list, start_time, end_time)
+            old_model_output_dir, results_table_path, output_list, start_time,
+            end_time)
         save_as_field_list = (
             outvar_df[outvar_df.Property_of ==
             sbstr].State_variable_rangeland_production.tolist())
@@ -1156,8 +1307,10 @@ def generate_regression_tests():
         assert len(save_as_field_list) == len(field_list), """Save as field
             list must be of equal length to field list"""
         save_dir = regression_test_dir
-        table_to_raster(results_table_path, field_list, GRID_POINT_SHP,
-                        save_dir, save_as_field_list=save_as_field_list)
+        table_to_raster(
+            results_table_path, input_args['site_param_spatial_index_path'],
+            field_list, GRID_POINT_SHP, save_dir,
+            save_as_field_list=save_as_field_list)
 
 
 if __name__ == "__main__":
@@ -1169,9 +1322,9 @@ if __name__ == "__main__":
         DROPBOX_DIR, "Mongolia/model_results/pycentury_dev")
     regression_testing_dir = os.path.join(
         old_model_output_dir, 'regression_test_data')
-    old_model_inputs_dict = generate_inputs_for_old_model(
-        old_model_processing_dir, old_model_input_dir)
 
-    # generate_inputs_for_new_model(old_model_inputs_dict)
-    # generate_initialization_rasters()
+    # century_params_to_new_model_params()
+    generate_inputs_for_old_model(
+        old_model_processing_dir, old_model_input_dir)
+    generate_initialization_rasters()
     generate_regression_tests()
