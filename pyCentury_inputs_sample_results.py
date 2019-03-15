@@ -12,7 +12,7 @@ as regression tests for the new model.
 import os
 import sys
 import collections
-import taskgraph
+# import taskgraph
 import tempfile
 import shutil
 import re
@@ -32,13 +32,13 @@ import forage as old_model
 
 arcpy.CheckOutExtension("Spatial")
 
-SAMPLE_DATA = "C:/Users/ginge/Documents/NatCap/sample_inputs"
+SAMPLE_DATA = r"C:\Users\ginge\Dropbox\sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
 TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1_hist.sch"
 TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1.sch"
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
 DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
-LOCAL_DIR = "E:/GIS_local_8.27.18"  # "C:/Users/ginge/Documents/NatCap/GIS_local"
+LOCAL_DIR = "C:/Users/ginge/Documents/NatCap/GIS_local"
 GRID_POINT_SHP = os.path.join(LOCAL_DIR, "raster_template_point.shp")
 
 
@@ -187,7 +187,7 @@ def generate_base_args():
             'starting_year': 2016,
             'n_months': 22,
             'aoi_path': os.path.join(
-                SAMPLE_DATA, 'aoi_small.shp'),
+                SAMPLE_DATA, 'Manlai_soum_WGS84.shp'),
             'bulk_density_path': os.path.join(
                 SAMPLE_DATA, 'soil', 'bulkd.tif'),
             'ph_path': os.path.join(
@@ -301,10 +301,14 @@ def generate_aligned_inputs():
         base_align_raster_path_id_map['pft_%d' % pft_i] = pft_path
 
     # find the smallest target_pixel_size
-    target_pixel_size = min(*[
-        pygeoprocessing.get_raster_info(path)['pixel_size']
-        for path in base_align_raster_path_id_map.values()],
-        key=lambda x: (abs(x[0]), abs(x[1])))
+    # TODO uncomment this to return to default of smallest pixel size
+    # target_pixel_size = min(*[
+    #     pygeoprocessing.get_raster_info(path)['pixel_size']
+    #     for path in base_align_raster_path_id_map.values()],
+    #     key=lambda x: (abs(x[0]), abs(x[1])))
+    # TODO remove this; hacking in running model at CHIRPS resolution
+    target_pixel_size = pygeoprocessing.get_raster_info(
+        base_align_raster_path_id_map['precip_1'])['pixel_size']
 
     # set up a dictionary that uses the same keys as
     # 'base_align_raster_path_id_map' to point to the clipped/resampled
@@ -489,7 +493,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         Worldclim average precipitation should be used for spin-up simulations.
         """
         worldclim_pattern = os.path.join(
-            LOCAL_DIR, "Mongolia/Worldclim/precip/wc2.0_30s_prec_<month>.tif")
+            LOCAL_DIR, "Mongolia/Worldclim/precip/wc2.0_10m_prec_<month>.tif")
 
         tempdir = tempfile.mkdtemp()
         # make a temporary copy of the point shapefile to append
@@ -537,9 +541,9 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
 
         This adapted from Rich's script point_precip_fetch.py.
         """
-        task_graph = taskgraph.TaskGraph('taskgraph_cache', 0)
-        task_graph.close()
-        task_graph.join()
+        # task_graph = taskgraph.TaskGraph('taskgraph_cache', 0)
+        # task_graph.close()
+        # task_graph.join()
 
         starting_month = int(aligned_args['starting_month'])
         starting_year = int(aligned_args['starting_year'])
@@ -819,6 +823,8 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             save_as = os.path.join(save_dir, '{}_hist.sch'.format(site))
             copy_sch_file(TEMPLATE_HIST, site, save_as)
 
+    if not os.path.exists(processing_dir):
+        os.makedirs(processing_dir)
     aligned_args = generate_aligned_inputs()
     soil_table = aligned_args['site_table']
     precip_table = os.path.join(processing_dir, "chirps_precip.csv")
@@ -908,7 +914,8 @@ def launch_old_model(old_model_input_dir, old_model_output_dir):
             try:
                 old_model.execute(old_model_args)
             except:
-                continue
+                import pdb; pdb.set_trace()
+                # continue
 
 
 def table_to_raster(
@@ -931,7 +938,8 @@ def table_to_raster(
     arcpy.env.overwriteOutput = True
 
     table_df = pandas.read_csv(table)
-    table_df = table_df[['site_id'] + field_list].set_index('site_id')
+    # table_df = table_df[['site_id'] + field_list].set_index('site_id')
+    table_df = table_df.set_index('site_id')
     temp_table_out = os.path.join(tempdir, 'temp_table.csv')
     table_df.to_csv(temp_table_out)
     shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
@@ -1263,12 +1271,10 @@ def generate_initialization_rasters():
             save_as_field_list=save_as_field_list)
 
 
-def generate_regression_tests():
+def generate_regression_tests(regression_testing_dir):
     """Collect regression results from a run of the old model."""
-    regression_test_dir = (
-        "C:/Users/ginge/Documents/NatCap/regression_test_data")
-    if not os.path.exists(regression_test_dir):
-        os.makedirs(regression_test_dir)
+    if not os.path.exists(regression_testing_dir):
+        os.makedirs(regression_testing_dir)
     input_args = generate_aligned_inputs()
 
     starting_month = int(input_args['starting_month'])
@@ -1306,14 +1312,88 @@ def generate_regression_tests():
             save_as_field_list = ['{}_1'.format(f) for f in save_as_field_list]
         assert len(save_as_field_list) == len(field_list), """Save as field
             list must be of equal length to field list"""
-        save_dir = regression_test_dir
+        save_dir = regression_testing_dir
         table_to_raster(
             results_table_path, input_args['site_param_spatial_index_path'],
             field_list, GRID_POINT_SHP, save_dir,
             save_as_field_list=save_as_field_list)
 
 
+def generate_biomass_rasters(biomass_raster_dir):
+    """Generate live biomass rasters from the old model.
+
+    Generate a raster time series of aboveground live biomass from a model run
+    at a series of points emulating a raster.  One raster is generated from
+    each monthly time step of the model run.  This function launches the model
+    to generate results for each pixel in a series of raster inputs. After the
+    aboveground biomass rasters are generated from model results, this function
+    deletes intermediate files (i.e., Century raw output files) from disk.
+
+    Returns:
+        None
+    """
+    if not os.path.exists(biomass_raster_dir):
+        os.makedirs(biomass_raster_dir)
+    input_args = generate_aligned_inputs()
+
+    # launch_old_model(old_model_input_dir, old_model_output_dir)
+    erase_intermediate_files(old_model_output_dir)
+
+    site_index_list = [
+        f for f in os.listdir(old_model_output_dir) if os.path.isdir(
+            os.path.join(old_model_output_dir, f))]
+    df_list = []
+    for site_id in site_index_list:
+        summary_csv = os.path.join(
+            old_model_output_dir, site_id, 'summary_results.csv')
+        try:
+            site_df = pandas.read_csv(summary_csv)
+        except IOError:
+            continue
+        site_df = (
+            site_df[site_df['step'] >= 0][[
+            '{}_green_kgha'.format(site_id), 'month', 'year']])
+        site_df['site_id'] = site_id
+        site_df['month_year'] = site_df["month"].map(str) + "_" + site_df["year"].map(str)
+        # reshape to "wide" format
+        reshape_df = pandas.pivot_table(
+            site_df, values='{}_green_kgha'.format(site_id), index='site_id',
+            columns='month_year')
+        df_list.append(reshape_df)
+    old_model_results = pandas.concat(df_list)
+    results_table_path = os.path.join(old_model_output_dir, 'green_biomass_time_series.csv')
+    old_model_results.to_csv(results_table_path)
+
+    field_list = old_model_results.columns.values
+    save_as_field_list = ['live_biomass_kgha_{}'.format(f) for f in field_list]
+    table_to_raster(
+        results_table_path, input_args['site_param_spatial_index_path'],
+        field_list, GRID_POINT_SHP, biomass_raster_dir, save_as_field_list=save_as_field_list)
+
+
+def erase_intermediate_files(outerdir):
+    for folder in os.listdir(outerdir):
+        try:
+            for file in os.listdir(os.path.join(outerdir, folder)):
+                if file.endswith("summary_results.csv") or \
+                file.startswith("forage-log") or \
+                file.endswith("summary.csv"):
+                    continue
+                else:
+                    try:
+                        object = os.path.join(outerdir, folder, file)
+                        if os.path.isfile(object):
+                            os.remove(object)
+                        else:
+                            shutil.rmtree(object)
+                    except OSError:
+                        continue
+        except WindowsError:
+            continue
+
+
 if __name__ == "__main__":
+    # new model development directories
     old_model_processing_dir = os.path.join(
         DROPBOX_DIR, "Mongolia/model_inputs/pycentury_dev")
     old_model_input_dir = os.path.join(
@@ -1323,8 +1403,21 @@ if __name__ == "__main__":
     regression_testing_dir = os.path.join(
         old_model_output_dir, 'regression_test_data')
 
+    # sample results for Lingling, 5x5 CHIRPS pixels
+    old_model_processing_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_inputs/Manlai_soum_WGS84")
+    old_model_input_dir = os.path.join(
+        old_model_processing_dir, 'model_inputs')
+    old_model_output_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_results/Manlai_soum_WGS84")
+    regression_testing_dir = os.path.join(
+        old_model_output_dir, 'regression_test_data')
+    biomass_raster_dir = os.path.join(
+        old_model_output_dir, 'biomass_rasters')
+
     # century_params_to_new_model_params()
-    generate_inputs_for_old_model(
-        old_model_processing_dir, old_model_input_dir)
-    generate_initialization_rasters()
-    generate_regression_tests()
+    # generate_inputs_for_old_model(
+        # old_model_processing_dir, old_model_input_dir)
+    # generate_initialization_rasters()
+    # generate_regression_tests(regression_testing_dir)
+    generate_biomass_rasters(biomass_raster_dir)
