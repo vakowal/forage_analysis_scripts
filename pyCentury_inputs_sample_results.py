@@ -14,18 +14,18 @@ import sys
 import collections
 # import taskgraph
 import tempfile
+from tempfile import mkstemp
 import shutil
 import re
 import math
-from tempfile import mkstemp
 
 import pandas
 import numpy
 from osgeo import ogr
 from osgeo import gdal
 from osgeo import osr
-import arcpy
 import pygeoprocessing
+import arcpy
 
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage as old_model
@@ -185,9 +185,9 @@ def generate_base_args():
     args = {
             'starting_month': 1,
             'starting_year': 2016,
-            'n_months': 22,
+            'n_months': 1,
             'aoi_path': os.path.join(
-                SAMPLE_DATA, 'Manlai_soum_WGS84.shp'),
+                SAMPLE_DATA, 'aoi_5x5.shp'),
             'bulk_density_path': os.path.join(
                 SAMPLE_DATA, 'soil', 'bulkd.tif'),
             'ph_path': os.path.join(
@@ -246,6 +246,23 @@ def generate_aligned_inputs():
     """
     args_new_model = generate_base_args()
     aligned_args = args_new_model.copy()
+
+    # set up a dictionary that uses the same keys as
+    # 'base_align_raster_path_id_map' to point to the clipped/resampled
+    # rasters
+    aligned_raster_dir = os.path.join(
+        args_new_model['workspace_dir'], 'aligned_inputs')
+    if not os.path.exists(aligned_raster_dir):
+        os.makedirs(aligned_raster_dir)
+
+    for arg_key in [
+            'bulk_density_path', 'ph_path', 'clay_proportion_path',
+            'silt_proportion_path', 'sand_proportion_path',
+            'monthly_precip_path_pattern', 'min_temp_path_pattern',
+            'max_temp_path_pattern', 'site_param_spatial_index_path',
+            'veg_spatial_composition_path_pattern']:
+        aligned_args[arg_key] = os.path.join(
+            aligned_raster_dir, os.path.basename(args_new_model[arg_key]))
 
     starting_month = int(args_new_model['starting_month'])
     starting_year = int(args_new_model['starting_year'])
@@ -308,25 +325,7 @@ def generate_aligned_inputs():
     #     key=lambda x: (abs(x[0]), abs(x[1])))
     # TODO remove this; hacking in running model at CHIRPS resolution
     target_pixel_size = pygeoprocessing.get_raster_info(
-        base_align_raster_path_id_map['precip_1'])['pixel_size']
-
-    # set up a dictionary that uses the same keys as
-    # 'base_align_raster_path_id_map' to point to the clipped/resampled
-    # rasters
-    aligned_raster_dir = os.path.join(
-        args_new_model['workspace_dir'], 'aligned_inputs')
-    if os.path.exists(aligned_raster_dir):
-        shutil.rmtree(aligned_raster_dir)
-    os.makedirs(aligned_raster_dir)
-
-    for arg_key in [
-            'bulk_density_path', 'ph_path', 'clay_proportion_path',
-            'silt_proportion_path', 'sand_proportion_path',
-            'monthly_precip_path_pattern', 'min_temp_path_pattern',
-            'max_temp_path_pattern', 'site_param_spatial_index_path',
-            'veg_spatial_composition_path_pattern']:
-        aligned_args[arg_key] = os.path.join(
-            aligned_raster_dir, os.path.basename(args_new_model[arg_key]))
+        base_align_raster_path_id_map['precip_0'])['pixel_size']
 
     # align all the base inputs to be the minimum known pixel size and to
     # only extend over their combined intersections
@@ -336,6 +335,9 @@ def generate_aligned_inputs():
     aligned_input_path_list = [
         os.path.join(aligned_raster_dir, os.path.basename(path)) for path in
         source_input_path_list]
+
+    if all([os.path.exists(p) for p in aligned_input_path_list]):
+        return aligned_args
 
     pygeoprocessing.align_and_resize_raster_stack(
         source_input_path_list, aligned_input_path_list,
@@ -911,10 +913,10 @@ def launch_old_model(old_model_input_dir, old_model_output_dir):
         if not os.path.isfile(os.path.join(
                 old_model_args['outdir'], 'summary_results.csv')):
             edit_grass_csv(old_model_args['grass_csv'], int(site['site_id']))
-            try:
-                old_model.execute(old_model_args)
-            except:
-                import pdb; pdb.set_trace()
+            # try:
+            old_model.execute(old_model_args)
+            # except:
+                # import pdb; pdb.set_trace()
                 # continue
 
 
@@ -940,6 +942,10 @@ def table_to_raster(
     table_df = pandas.read_csv(table)
     # table_df = table_df[['site_id'] + field_list].set_index('site_id')
     table_df = table_df.set_index('site_id')
+
+    # replace all instances of "," with "_" in column headers
+    rename_dict = {col: re.sub(',', '_', col) for col in table_df.columns}
+    table_df.rename(columns=rename_dict)
     temp_table_out = os.path.join(tempdir, 'temp_table.csv')
     table_df.to_csv(temp_table_out)
     shp_fields = [f.name for f in arcpy.ListFields(grid_point_shp)]
@@ -1223,8 +1229,7 @@ def generate_initialization_rasters():
     The new model may be initialized with rasters for each state variable.
     Collect these rasters from results of a run of the old model.
     """
-    initialization_dir = (
-        "C:/Users/ginge/Documents/NatCap/sample_inputs/initialization_data")
+    initialization_dir = os.path.join(SAMPLE_DATA, "initialization_data")
     if not os.path.exists(initialization_dir):
         os.makedirs(initialization_dir)
     input_args = generate_aligned_inputs()
@@ -1246,6 +1251,7 @@ def generate_initialization_rasters():
         "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
     outvar_df = pandas.read_csv(outvar_csv)
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
+    outvar_df.sort_values(by=['outvar'], inplace=True)
     for sbstr in ['PFT', 'site']:
         output_list = outvar_df[
             outvar_df.Property_of == sbstr].outvar.tolist()
@@ -1279,7 +1285,7 @@ def generate_regression_tests(regression_testing_dir):
 
     starting_month = int(input_args['starting_month'])
     starting_year = int(input_args['starting_year'])
-    month_i = int(input_args['n_months'])
+    month_i = int(input_args['n_months']) - 1
     end_month = (starting_month + month_i - 1) % 12 + 1
     end_year = starting_year + (starting_month + month_i - 1) // 12
     start_time = convert_to_century_date(end_year, end_month)
@@ -1300,7 +1306,7 @@ def generate_regression_tests(regression_testing_dir):
         field_list = ['{}_{}_{:d}'.format(
             f, end_year, end_month) for f in output_list]
         results_table_path = os.path.join(
-            old_model_output_dir, '{}_initial.csv'.format(sbstr))
+            old_model_output_dir, '{}_regression_test.csv'.format(sbstr))
         old_model_results_to_table(
             old_model_output_dir, results_table_path, output_list, start_time,
             end_time)
@@ -1393,16 +1399,6 @@ def erase_intermediate_files(outerdir):
 
 
 if __name__ == "__main__":
-    # new model development directories
-    old_model_processing_dir = os.path.join(
-        DROPBOX_DIR, "Mongolia/model_inputs/pycentury_dev")
-    old_model_input_dir = os.path.join(
-        old_model_processing_dir, 'model_inputs')
-    old_model_output_dir = os.path.join(
-        DROPBOX_DIR, "Mongolia/model_results/pycentury_dev")
-    regression_testing_dir = os.path.join(
-        old_model_output_dir, 'regression_test_data')
-
     # sample results for Lingling, 5x5 CHIRPS pixels
     old_model_processing_dir = os.path.join(
         DROPBOX_DIR, "Mongolia/model_inputs/Manlai_soum_WGS84")
@@ -1415,9 +1411,19 @@ if __name__ == "__main__":
     biomass_raster_dir = os.path.join(
         old_model_output_dir, 'biomass_rasters')
 
+    # directories for model testing results
+    old_model_processing_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_inputs/pycentury_dev")
+    old_model_input_dir = os.path.join(
+        old_model_processing_dir, 'model_inputs')
+    old_model_output_dir = os.path.join(
+        DROPBOX_DIR, "Mongolia/model_results/pycentury_dev")
+    regression_testing_dir = "C:/Users/ginge/Documents/NatCap/regression_test_data"
+
     # century_params_to_new_model_params()
-    # generate_inputs_for_old_model(
+    #generate_inputs_for_old_model(
         # old_model_processing_dir, old_model_input_dir)
-    # generate_initialization_rasters()
-    # generate_regression_tests(regression_testing_dir)
-    generate_biomass_rasters(biomass_raster_dir)
+    generate_initialization_rasters()
+    generate_regression_tests(regression_testing_dir)
+    # generate_biomass_rasters(biomass_raster_dir)
+    # generate_aligned_inputs()
