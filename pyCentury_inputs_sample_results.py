@@ -34,8 +34,8 @@ arcpy.CheckOutExtension("Spatial")
 
 SAMPLE_DATA = r"C:\Users\ginge\Dropbox\sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
-TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1_hist.sch"
-TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G1.sch"
+TEMPLATE_HIST = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G_hist.sch"
+TEMPLATE_SCH = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing_GCD_G.sch"
 CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014'
 DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
 LOCAL_DIR = "C:/Users/ginge/Documents/NatCap/GIS_local"
@@ -185,9 +185,9 @@ def generate_base_args():
     args = {
             'starting_month': 1,
             'starting_year': 2016,
-            'n_months': 1,
+            'n_months': 12,
             'aoi_path': os.path.join(
-                SAMPLE_DATA, 'aoi_5x5.shp'),
+                SAMPLE_DATA, 'aoi_small.shp'),
             'bulk_density_path': os.path.join(
                 SAMPLE_DATA, 'soil', 'bulkd.tif'),
             'ph_path': os.path.join(
@@ -385,7 +385,8 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                     temp_dict[field_list[f_idx]].append(row[f_idx])
         soil_df = pandas.DataFrame.from_dict(temp_dict).set_index('site_id')
 
-        bulkd_key = os.path.basename(aligned_args['bulk_density_path'])[:-4][:10]
+        bulkd_key = os.path.basename(
+            aligned_args['bulk_density_path'])[:-4][:10]
         ph_key = os.path.basename(aligned_args['ph_path'])[:-4][:10]
         clay_key = os.path.basename(
             aligned_args['clay_proportion_path'])[:-4][:10]
@@ -436,6 +437,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                     continue
         soil_df.to_csv(save_as)
 
+
     def write_temperature_table(site_shp, save_as):
         """Make a table of max and min monthly temperature for points."""
         tempdir = tempfile.mkdtemp()
@@ -469,7 +471,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         with arcpy.da.SearchCursor(point_shp, field_list) as cursor:
             for row in cursor:
                 site = row[0]
-                temp_dict['site'].extend([site] * 12)
+                temp_dict['site'].extend([site] * len(temperature_month_set))
                 for f_idx in range(1, len(field_list)):
                     field = field_list[f_idx]
                     if field.startswith('min'):
@@ -488,6 +490,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             temp_df['tmax'] = temp_df['tmax'] / 10.
             temp_df['tmin'] = temp_df['tmin'] / 10.
         temp_df.to_csv(save_as, index=False)
+
 
     def write_worldclim_precip_table(site_shp, save_as):
         """Write precipitation table from Worldclim average precipitation.
@@ -537,6 +540,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         # divide raw Worldclim precip by 10
         prec_df['prec'] = prec_df['prec'] / 10.
         prec_df.to_csv(save_as, index=False)
+
 
     def write_precip_table_from_rasters(aligned_args, site_shp, save_as):
         """Make a table of precipitation from a series of rasters.
@@ -617,6 +621,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
         report_table = report_table.transpose()
         report_table.to_csv(save_as)
 
+
     def write_wth_files(
             soil_table, temperature_table, precip_table, save_dir):
         """Generate .wth files from temperature and precip tables."""
@@ -676,6 +681,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
             formats = ['%4s', '%6s'] + ['%7.2f'] * 12
             save_as = os.path.join(save_dir, '{}.wth'.format(site))
             numpy.savetxt(save_as, df.values, fmt=formats, delimiter='')
+
 
     def write_site_files(
             aligned_args, soil_table, worldclim_precip_table,
@@ -783,6 +789,7 @@ def generate_inputs_for_old_model(processing_dir, input_dir):
                 inputs_dir, '{}.100'.format(int(inputs_dict['site_id'])))
             shutil.copyfile(abs_path, save_as)
             os.remove(abs_path)
+
 
     def write_sch_files(soil_table, save_dir):
         """Write the schedule file for each point simulation.
@@ -1300,6 +1307,7 @@ def generate_regression_tests(regression_testing_dir):
             DROPBOX_DIR,
             "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv"))
     outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
+    outvar_df.sort_values(by=['outvar'], inplace=True)
     for sbstr in ['site', 'PFT']:
         output_list = outvar_df[
             outvar_df.Property_of == sbstr].outvar.tolist()
@@ -1397,7 +1405,6 @@ def erase_intermediate_files(outerdir):
         except WindowsError:
             continue
 
-
 if __name__ == "__main__":
     # sample results for Lingling, 5x5 CHIRPS pixels
     old_model_processing_dir = os.path.join(
@@ -1421,9 +1428,11 @@ if __name__ == "__main__":
     regression_testing_dir = "C:/Users/ginge/Documents/NatCap/regression_test_data"
 
     # century_params_to_new_model_params()
-    #generate_inputs_for_old_model(
-        # old_model_processing_dir, old_model_input_dir)
+    # TODO change n_months in base args to 12
+    generate_inputs_for_old_model(
+        old_model_processing_dir, old_model_input_dir)
     generate_initialization_rasters()
-    generate_regression_tests(regression_testing_dir)
+    # TODO change n_months in base args to 1
+    # generate_regression_tests(regression_testing_dir)
     # generate_biomass_rasters(biomass_raster_dir)
     # generate_aligned_inputs()
