@@ -25,12 +25,12 @@ from osgeo import ogr
 from osgeo import gdal
 from osgeo import osr
 import pygeoprocessing
-import arcpy
+# import arcpy
 
 sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
 import forage as old_model
 
-arcpy.CheckOutExtension("Spatial")
+# arcpy.CheckOutExtension("Spatial")
 
 SAMPLE_DATA = r"C:\Users\ginge\Dropbox\sample_inputs"
 TEMPLATE_100 = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\template_files\no_grazing.100"
@@ -40,6 +40,89 @@ CENTURY_DIR = 'C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Cent
 DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
 LOCAL_DIR = "C:/Users/ginge/Documents/NatCap/GIS_local"
 GRID_POINT_SHP = os.path.join(LOCAL_DIR, "raster_template_point.shp")
+
+
+def century_outputs_to_initial_tables(
+        century_output_file, year, month, site_initial_table,
+        pft_initial_table):
+    """Generate initial value tables from raw Century outputs.
+
+    Take outputs from a single Century run and format them as initial values
+    tables for the Rangeland model. The resulting initial values tables will
+    represent one site type and one plant functional type, both indexed by '1'.
+
+    Parameters:
+        century_output_file (string): path to output file containing Century
+            outputs, e.g. the file extension of this file should be '.lis'
+        year (integer): year of the date from which to draw initial values
+        month (integer): month of the date from which to draw initial values
+        site_initial_table (string): path to filename where site initial value
+            table should be created
+        pft_initial_table (string): path to filename where plant functional
+            type initial value table should be created
+
+    Side effects:
+        creates or modifies the csv file indicated by `site_initial_table`
+        creates or modifies the csv file indicated by `pft_initial_table`
+
+    Returns:
+        None
+
+    """
+    def century_to_rp(century_label):
+        """Convert Century name to rangeland production name."""
+        rp = re.sub(r"\(", "_", century_label)
+        rp = re.sub(r",", "_", rp)
+        rp = re.sub(r"\)", "", rp)
+        return rp
+
+    time = convert_to_century_date(year, month)
+    outvar_csv = os.path.join(
+        DROPBOX_DIR,
+        "Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv")
+    outvar_df = pandas.read_csv(outvar_csv)
+    outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
+    outvar_df.sort_values(by=['outvar'], inplace=True)
+    for sbstr in ['PFT', 'site']:
+        output_list = outvar_df[
+            outvar_df.Property_of == sbstr].outvar.tolist()
+        cent_df = pandas.read_fwf(century_output_file, skiprows=[1])
+        # mistakes in Century writing results
+        if 'minerl(10,1' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                inplace=True)
+        if 'minerl(10,2' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,2': 'struce(2,2)'},
+                inplace=True)
+        try:
+            fwf_correct = cent_df[output_list]
+        except KeyError:
+            # try again, specifying widths explicitly
+            widths = [16] * 79
+            cent_df = pandas.read_fwf(
+                century_output_file, skiprows=[1], widths=widths)
+            # mistakes in Century writing results
+            if 'minerl(10,1' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                    inplace=True)
+            if 'minerl(10,2' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,2': 'minerl(10,2)'},
+                    inplace=True)
+        df_subset = cent_df[(cent_df.time == time)]
+        df_subset = df_subset.drop_duplicates('time')
+        outputs = df_subset[output_list]
+        outputs = outputs.loc[:, ~outputs.columns.duplicated()]
+        col_rename_dict = {c: century_to_rp(c) for c in outputs.columns.values}
+        outputs.rename(index=int, columns=col_rename_dict, inplace=True)
+        outputs[sbstr] = 1
+        if sbstr == 'site':
+            outputs.to_csv(site_initial_table, index=False)
+        if sbstr == 'PFT':
+            outputs.to_csv(pft_initial_table, index=False)
 
 
 def convert_to_year_month(CENTURY_date):
@@ -895,26 +978,29 @@ def launch_old_model(old_model_input_dir, old_model_output_dir):
             'input_dir': old_model_input_dir,
             'prop_legume': 0.0,
             'steepness': 1.,
-            'DOY': 1,
+            'DOY': 106.4,  # 1,
             'start_year': input_args['starting_year'],
             'start_month': input_args['starting_month'],
             'num_months': input_args['n_months'],
-            'mgmt_threshold': 300.,
+            'mgmt_threshold': 0.1,  # 300.,
             'century_dir': CENTURY_DIR,
             'template_level': input_args['template_level'],
             'fix_file': input_args['fix_file'],
-            'user_define_protein': 1,
+            'user_define_protein': 0,
             'user_define_digestibility': 0,
             'herbivore_csv': input_args['herbivore_csv'],
             'grass_csv': input_args['grass_csv'],
+            'digestibility_flag': 'CPER',
             }
 
-    modify_stocking_density(old_model_args['herbivore_csv'], 0)  # TODO relate sd to new model
+    modify_stocking_density(old_model_args['herbivore_csv'], 0.1)  # TODO relate sd to new model
     site_list = pandas.read_csv(
         input_args['site_table']).to_dict(orient='records')
     outer_outdir = old_model_output_dir
     for site in site_list:
         old_model_args['latitude'] = site['latitude']
+        # TODO remove me
+        old_model_args['latitude'] = 45
         old_model_args['outdir'] = os.path.join(
             outer_outdir, '{}'.format(int(site['site_id'])))
         if not os.path.isfile(os.path.join(
@@ -1211,6 +1297,10 @@ def century_params_to_new_model_params():
     site_df.to_csv(new_model_args['site_param_path'], index=False)
 
     # TODO: get animal parameters from new_model_args['herbivore_csv']
+    # TODO: add new PFT parameters:
+    #   species factor (0 for C3 grass, 0.16 for C4 grasses)
+    #   digestibility_slope
+    #   digestibility_intercept
 
 
 def initial_variables_to_outvars():
@@ -1249,7 +1339,9 @@ def generate_initialization_rasters():
     start_time = convert_to_century_date(target_year, target_month)
     end_time = start_time
 
-    initial_variables_to_outvars()
+    # initial_variables_to_outvars()
+    # TODO remove me
+    old_model_output_dir = "C:/Users/ginge/Desktop"
     launch_old_model(old_model_input_dir, old_model_output_dir)
 
     # intialization rasters
@@ -1405,6 +1497,40 @@ def erase_intermediate_files(outerdir):
         except WindowsError:
             continue
 
+
+def check_nodata_values():
+    """Reclassify nodata values of initialization rasters to match each other.
+
+    Check nodata values of initialization rasters, and if there is more than
+    one value, reclassify the nodata value of the offending raster so that it
+    matches the others.
+
+    """
+    initialization_dir = r"C:\Users\ginge\Dropbox\sample_inputs\initialization_data"
+    wrong_list = []
+    basename_list = [
+        f for f in os.listdir(initialization_dir) if f.endswith('.tif')]
+    state_var_nodata = pygeoprocessing.get_raster_info(
+        os.path.join(initialization_dir, basename_list[0]))['nodata'][0]
+    for bn in basename_list[1:]:
+        nodata = pygeoprocessing.get_raster_info(
+            os.path.join(initialization_dir, bn))['nodata'][0]
+        if nodata != state_var_nodata:
+            raster_path = os.path.join(initialization_dir, bn)
+            raster = gdal.OpenEx(raster_path, gdal.OF_RASTER)
+            raster_band = raster.GetRasterBand(1)
+            raster_band.SetNoDataValue(state_var_nodata)
+            raster_band.FlushCache()
+            raster.FlushCache()
+            raster_band = None
+            raster = None
+        nodata = pygeoprocessing.get_raster_info(
+            os.path.join(initialization_dir, bn))['nodata'][0]
+        if nodata != state_var_nodata:
+            wrong_list.append(bn)
+    print wrong_list
+
+
 if __name__ == "__main__":
     # sample results for Lingling, 5x5 CHIRPS pixels
     old_model_processing_dir = os.path.join(
@@ -1429,10 +1555,20 @@ if __name__ == "__main__":
 
     # century_params_to_new_model_params()
     # TODO change n_months in base args to 12
-    generate_inputs_for_old_model(
-        old_model_processing_dir, old_model_input_dir)
-    generate_initialization_rasters()
+    # generate_inputs_for_old_model(
+    #     old_model_processing_dir, old_model_input_dir)
+    # generate_initialization_rasters()
     # TODO change n_months in base args to 1
     # generate_regression_tests(regression_testing_dir)
     # generate_biomass_rasters(biomass_raster_dir)
     # generate_aligned_inputs()
+    # check_nodata_values()
+
+    century_output_file = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/pycentury_dev/0/CENTURY_outputs_m12_y2016/0.lis"
+    year = 2015
+    month = 12
+    site_initial_table = "C:/Users/ginge/Dropbox/sample_inputs/site_initial_table.csv"
+    pft_initial_table = "C:/Users/ginge/Dropbox/sample_inputs/pft_initial_table.csv"
+    century_outputs_to_initial_tables(
+        century_output_file, year, month, site_initial_table,
+        pft_initial_table)

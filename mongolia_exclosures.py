@@ -786,7 +786,7 @@ def summarize_biomass(site_csv, save_as):
                 os.path.join(outdir, 'summary_results.csv'))
             sum_df.set_index(['step'], inplace=True)
             subset = sum_df.loc[sum_df['month'].isin([7, 8, 9])]
-            subset = subset.loc[subset['year'].isin([2017, 2018])]
+            subset = subset.loc[subset['year'].isin([2016, 2017, 2018])]
             subset['green_biomass_gm2'] = (
                 subset['{}_green_kgha'.format(site_id)] / 10.)
             subset['dead_biomass_gm2'] = (
@@ -816,5 +816,5 @@ if __name__ == "__main__":
     # copy *.100 files from CHIRPS inputs dir to NAMEM inputs dir
     site_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\WCS_exclosures\soil_table.csv"
     # run_WCS_exclosures(site_csv)
-    biomass_summary = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\WCS_exclosures\simulated_biomass_summary.csv"
+    biomass_summary = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\WCS_exclosures\simulated_biomass_summary_2016-7-8.csv"
     summarize_biomass(site_csv, biomass_summary)
