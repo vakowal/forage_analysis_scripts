@@ -2,11 +2,13 @@
 import os
 import time
 
+from osgeo import gdal
 import re
 import shutil
 import pandas
 from subprocess import Popen
 
+import pygeoprocessing
 
 # directory containing the Century executable, century_46.exe, and necessary
 #   supporting files, such as graz.100 and crop.100
@@ -17,6 +19,9 @@ _FIX_FILE = 'drygfix.100'
 
 # local directory containing Century output variable definitions`
 _DROPBOX_DIR = "C:/Users/ginge/Dropbox/NatCap_backup"
+
+# nodata value for initial state variable rasters
+_SV_NODATA = -1.0
 
 def write_century_bat(
         century_bat, schedule, output, fix_file, outvars, extend=None):
@@ -243,15 +248,27 @@ def launch_sites(site_csv, input_dir, outer_outdir):
     os.remove(os.path.join(_CENTURY_DIRECTORY, _FIX_FILE))
 
 
-def century_outputs_to_rpm_initialization(
-        site_csv, outer_outdir, year, month, site_initial_table,
-        pft_initial_table):
-    """Generate initialization tables for RPM from raw Century outputs.
+def convert_to_century_date(year, month):
+    """Convert year and month to Century's representation of dates."""
+    return float('%.2f' % (year + month / 12.))
 
-    Take outputs from a series of Century runs and format them as initial
-    values tables for the Rangeland Production Model. The resulting initial values
-    tables will represent one site type and one plant functional type, both
-    indexed by '1'.
+
+def century_to_rpm(century_label):
+    """Convert Century variable name to rangeland production model name."""
+    rp = re.sub(r"\(", "_", century_label)
+    rp = re.sub(r",", "_", rp)
+    rp = re.sub(r"\)", "", rp)
+    return rp
+
+
+def century_outputs_to_rpm_initial_rasters(
+        site_csv, outer_outdir, year, month, site_index_path,
+        initial_conditions_dir):
+    """Generate initial conditions rasters for RPM from raw Century outputs.
+
+    Take outputs from a series of Century runs and convert them to initial
+    conditions rasters, one per state variable, for the Rangeland Production
+    Model.
 
     Parameters:
         site_csv (string): path to a table containing coordinates labels
@@ -263,30 +280,23 @@ def century_outputs_to_rpm_initialization(
             folder of outputs for each site
         year (integer): year of the date from which to draw initial values
         month (integer): month of the date from which to draw initial values
-        site_initial_table (string): path to filename where site initial value
-            table should be created
-        pft_initial_table (string): path to filename where plant functional
-            type initial value table should be created
+        site_index_path (string): path to raster that indexes sites spatially,
+            indicating which set of Century outputs should apply at each pixel
+            in the raster. E.g., this raster could contain Thiessen polygons
+            corresponding to a set of points where Century has been run
+        initial_conditions_dir (string): path to directory where initial
+            conditions rasters should be written
 
     Side effects:
-        creates or modifies the csv file indicated by `site_initial_table`
-        creates or modifies the csv file indicated by `pft_initial_table`
+        creates or modifies rasters in `initial_conditions_dir`, one per state
+            variable required to initialize RPM
 
     Returns:
         None
 
     """
-    def convert_to_century_date(year, month):
-        """Convert year and month to Century's representation of dates."""
-        return float('%.2f' % (year + month / 12.))
-
-    def century_to_rpm(century_label):
-        """Convert Century variable name to rangeland production model name."""
-        rp = re.sub(r"\(", "_", century_label)
-        rp = re.sub(r",", "_", rp)
-        rp = re.sub(r"\)", "", rp)
-        return rp
-
+    if not os.path.exists(initial_conditions_dir):
+        os.makedirs(initial_conditions_dir)
     time = convert_to_century_date(year, month)
 
     # Century output variables
@@ -335,7 +345,6 @@ def century_outputs_to_rpm_initialization(
                     inplace=True)
         df_subset = cent_df[(cent_df.time == time)]
         df_subset = df_subset.drop_duplicates('time')
-
         for sbstr in ['PFT', 'site']:
             output_list = outvar_df[
                 outvar_df.Property_of == sbstr].outvar.tolist()
@@ -353,9 +362,34 @@ def century_outputs_to_rpm_initialization(
             if sbstr == 'PFT':
                 pft_df_list.append(outputs)
     site_initial_df = pandas.concat(site_df_list)
-    site_initial_df.to_csv(site_initial_table, index=False)
+    site_initial_df.set_index('site', inplace=True)
+    siteid_to_initial = site_initial_df.to_dict(orient='index')
+    site_sv_list = outvar_df[outvar_df.Property_of == 'site'].outvar.tolist()
+    rpm_site_sv_list = [century_to_rpm(c) for c in site_sv_list]
+    for site_sv in rpm_site_sv_list:
+        site_to_val = dict(
+            [(site_code, float(table[site_sv])) for (site_code, table) in
+            siteid_to_initial.items()])
+        target_path = os.path.join(
+            initial_conditions_dir, '{}.tif'.format(site_sv))
+        pygeoprocessing.reclassify_raster(
+            (site_index_path, 1), site_to_val, target_path,
+            gdal.GDT_Float32, _SV_NODATA)
+
     pft_initial_df = pandas.concat(pft_df_list)
-    pft_initial_df.to_csv(pft_initial_table, index=False)
+    pft_initial_df.set_index('PFT', inplace=True)
+    pft_to_initial = pft_initial_df.to_dict(orient='index')
+    pft_sv_list = outvar_df[outvar_df.Property_of == 'PFT'].outvar.tolist()
+    rpm_pft_sv_list = [century_to_rpm(c) for c in pft_sv_list]
+    for pft_sv in rpm_pft_sv_list:
+        site_to_pftval = dict(
+            [(site_code, float(table[pft_sv])) for (site_code, table) in
+            pft_to_initial.items()])
+        target_path = os.path.join(
+            initial_conditions_dir, '{}_{}.tif'.format(pft_sv, 1))
+        pygeoprocessing.reclassify_raster(
+            (site_index_path, 1), site_to_pftval, target_path,
+            gdal.GDT_Float32, _SV_NODATA)
 
 
 def main():
@@ -366,11 +400,11 @@ def main():
     # launch_sites(site_csv, input_dir, outer_outdir)
     year = 2016
     month = 8
-    site_initial_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/site_initial.csv"
-    pft_initial_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/pft_initial.csv"
-    century_outputs_to_rpm_initialization(
-        site_csv, outer_outdir, year, month, site_initial_table,
-        pft_initial_table)
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/site_idx_CBM_SCP_voronoi_polygon.tif"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/initial_conditions"
+    century_outputs_to_rpm_initial_rasters(
+        site_csv, outer_outdir, year, month, site_index_path,
+        initial_conditions_dir)
 
 if __name__ == "__main__":
     main()
