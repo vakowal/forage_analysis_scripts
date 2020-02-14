@@ -1,8 +1,8 @@
 """Run RPM with initial values from sampling points."""
 import os
 import collections
-import tempfile
 import shutil
+import tempfile
 
 import numpy
 import pandas
@@ -31,7 +31,7 @@ def generate_base_args(workspace_dir):
         'results_suffix': "",
         'starting_month': 9,
         'starting_year': 2016,
-        'n_months': 39,
+        'n_months': 23,  # ideally 39 to get us through 2019,
         'aoi_path': os.path.join(
             DATA_DIR, 'soums_monitoring_area_diss.shp'),
         'management_threshold': 2000,
@@ -228,6 +228,56 @@ def copy_rpm_outputs(workspace_dir, n_months, copy_dir):
         shutil.copyfile(stdedc_raster_path, output_path)
 
 
+def extend():
+    """Launch the model to extend from previous results."""
+    # the final step of the previous model run. This becomes m-1
+    last_successful_step = 23
+    # total number of months to run
+    total_n_months = 39
+    n_months = total_n_months - last_successful_step
+    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/temp_model_outputs_initialized_by_Century"
+    existing_dir = os.path.join(outer_dir, 'zero_sd')
+    extend_dir = os.path.join(outer_dir, 'zero_sd_extend')
+    if not os.path.exists(extend_dir):
+        os.makedirs(extend_dir)
+    rpm_args = generate_base_args(extend_dir)
+
+    # copy initial conditions from ending state of existing runs
+    initial_conditions_dir = tempfile.mkdtemp()
+    required_bn_list = [
+        f for f in os.listdir(os.path.join(
+            existing_dir, 'state_variables_m-1')) if f.endswith('.tif')]
+    existing_bn_list = [
+        f for f in os.listdir(os.path.join(
+            existing_dir, 'state_variables_m{}'.format(last_successful_step)))
+        if f.endswith('.tif')]
+    missing_bn_list = set(required_bn_list).difference(existing_bn_list)
+    source_path_list = (
+        [os.path.join(existing_dir, 'state_variables_m{}'.format(
+            last_successful_step), e_bn) for e_bn in existing_bn_list] +
+        [os.path.join(existing_dir, 'state_variables_m-1', m_bn) for m_bn in
+        missing_bn_list])
+    for path in source_path_list:
+        shutil.copyfile(
+            path, os.path.join(initial_conditions_dir, os.path.basename(path)))
+
+    # reset args to start from original simulation results
+    rpm_args['initial_conditions_dir'] = initial_conditions_dir
+    rpm_args['n_months'] = n_months
+    rpm_args['starting_year'] = 2018
+    rpm_args['starting_month'] = 8
+    forage.execute(rpm_args)
+
+    # copy outputs from extend simulation into original
+    for extend_index in range(n_months):
+        src_dir = os.path.join(
+            extend_dir, 'state_variables_m{}'.format(extend_index))
+        new_index = extend_index + last_successful_step + 1
+        dest_dir = os.path.join(
+            existing_dir, 'state_variables_m{}'.format(new_index))
+        shutil.copytree(src_dir, dest_dir)
+
+
 def main():
     """Launch model and check results."""
     outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/temp_model_outputs_initialized_by_Century"
@@ -235,20 +285,21 @@ def main():
     if not os.path.exists(workspace_dir):
         os.makedirs(workspace_dir)
     rpm_args = generate_base_args(workspace_dir)
-    forage.execute(rpm_args)
+    # forage.execute(rpm_args)
 
     # extract results to a table
     for point_shp_path in SAMPLE_PATH_LIST:
-        n_months = 14  # TODO how many ran successfully?
-        save_as = "C:/Users/ginge/Desktop/biomass_summary_{}.csv".format(
-            os.path.basename(point_shp_path))
+        n_months = 40  # TODO how many ran successfully?
+        save_as = "C:/Users/ginge/Desktop/zero_sd/biomass_summary_{}.csv".format(
+            os.path.basename(point_shp_path)[:-4])
         rpm_results_to_table(workspace_dir, n_months, point_shp_path, save_as)
 
     # copy aglivc and stdedc rasters to a folder to upload and share
-    copy_dir = "C:/Users/ginge/Desktop/RPM_outputs"
+    copy_dir = "C:/Users/ginge/Desktop/zero_sd/RPM_outputs"
     copy_rpm_outputs(workspace_dir, n_months, copy_dir)
 
 
 if __name__ == "__main__":
     __spec__ = None  # for running with pdb
+    extend()
     main()
