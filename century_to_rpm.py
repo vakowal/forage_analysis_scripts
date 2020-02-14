@@ -5,7 +5,9 @@ import time
 from osgeo import gdal
 import re
 import shutil
+import tempfile
 import pandas
+import numpy
 from subprocess import Popen
 
 import pygeoprocessing
@@ -56,13 +58,15 @@ def write_century_bat(
         file.write('copy ' + fix_file + ' fix.100\n')
 
         if extend:
-            file.write('century_46 -s ' + schedule + ' -n ' + output + ' -e ' +
+            file.write(
+                'century_46 -s ' + schedule + ' -n ' + output + ' -e ' +
                 extend + ' > ' + output + '_log.txt\n')
         else:
-            file.write('century_46 -s ' + schedule + ' -n ' + output + ' > ' +
+            file.write(
+                'century_46 -s ' + schedule + ' -n ' + output + ' > ' +
                 output + '_log.txt\n')
-        file.write('list100_46 ' + output + ' ' + output + ' ' + outvars +
-            '\n\n')
+        file.write(
+            'list100_46 ' + output + ' ' + output + ' ' + outvars + '\n\n')
         file.write('erase fix.100\n')
 
 
@@ -392,12 +396,59 @@ def century_outputs_to_rpm_initial_rasters(
             gdal.GDT_Float32, _SV_NODATA)
 
 
+def summarize_century_biomass(
+        site_csv, outer_outdir, start_time, end_time, save_as):
+    """Collect outputs from Century results at a series of sites.
+
+    Make a table of simulated biomass, including live and standing dead, for
+    the period `start_time` to `end_time` from raw Century outputs.
+
+    Parameters:
+        site_csv (string): path to a table containing coordinates and labels
+            for a series of sites.  Must contain a column, 'site_id', that
+            identifies the Century outputs pertaining to each site
+        outer_outdir (string): path to a directory containing Century output
+            files. It is expected that this directory contains a separate
+            folder of outputs for each site
+        start_time (float): starting date for which outputs should be collected
+        end_time (float): ending date for which outputs should be collected
+        save_as (string): path to location on disk where summarized biomass
+            should be saved
+
+    Side effects:
+        creates or modifies a csv file at `save_as`
+
+    Returns:
+        None
+
+    """
+    site_list = pandas.read_csv(site_csv).to_dict(orient='records')
+    df_list = []
+    for site in site_list:
+        site_id = site['site_id']
+        output_file = os.path.join(
+            outer_outdir, '{}'.format(site_id), '{}.lis'.format(site_id))
+        cent_df = pandas.read_fwf(output_file, skiprows=[1])
+        cent_df = cent_df[
+            (cent_df.time >= start_time) & (cent_df.time <= end_time)]
+        cent_df = cent_df[['time', 'aglivc', 'stdedc']]
+        cent_df['live_biomass'] = cent_df.aglivc * 2.5
+        cent_df['dead_biomass'] = cent_df.stdedc * 2.5
+        cent_df['total_biomass'] = cent_df.live_biomass + cent_df.dead_biomass
+        cent_df.drop_duplicates(inplace=True)
+        cent_df['site_id'] = site_id
+        cent_df.set_index('time', inplace=True)
+        df_list.append(cent_df)
+    sum_df = pandas.concat(df_list)
+    sum_df.to_csv(save_as)
+
+
 def main():
     """Program entry point."""
     site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/soil/monitoring_points_soil_isric_250m.csv"
-    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/chirps_prec_historical_schedule"
-    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/SCP_sites/chirps_prec_historical_schedule"
-    # launch_sites(site_csv, input_dir, outer_outdir)
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/chirps_prec_back_calc"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/monitoring_sites/chirps_prec_back_calc_2.13.20"
+    launch_sites(site_csv, input_dir, outer_outdir)
     year = 2016
     month = 8
     site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/site_idx_CBM_SCP_voronoi_polygon.tif"
@@ -405,6 +456,12 @@ def main():
     century_outputs_to_rpm_initial_rasters(
         site_csv, outer_outdir, year, month, site_index_path,
         initial_conditions_dir)
+    start_time = 2015.08
+    end_time = 2018.00
+    save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
+    summarize_century_biomass(
+        site_csv, outer_outdir, start_time, end_time, save_as)
+
 
 if __name__ == "__main__":
     main()
