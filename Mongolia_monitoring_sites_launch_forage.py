@@ -5,8 +5,8 @@ import sys
 import shutil
 import pandas as pd
 sys.path.append(
-    "C:/Users/ginge/Documents/Python/rangeland_production")
-import forage
+    "C:/Users/ginge/Documents/Python/rangeland_production_11_26_18")
+# import forage
 import back_calculate_management as backcalc
 
 def default_forage_args():
@@ -214,14 +214,89 @@ def calc_variability(site_csv, save_as):
     sum_df = pd.DataFrame(sum_dict)
     sum_df.to_csv(save_as)
 
-def back_calc(site_csv):
-    """Back calculate management with inputs from NAMEM and CHIRPS."""
 
-    site_df = pd.read_csv(site_csv)
+def back_calc(match_csv, input_dir, outdir):
+    """Back calculate management to match 2016 empirical biomass."""
+    century_dir = r'C:\Users\ginge\Dropbox\NatCap_backup\Forage_model\CENTURY4.6\Century46_PC_Jan-2014'
+    fix_file = 'drygfix.100'
+    n_months = 60
+    vary = 'both'
+    live_or_total = 'total'
+    threshold = 5.0
+    max_iterations = 1  # 50
+    template_level = 'GGS'
+
+    site_df = pd.read_csv(match_csv)
     for site in site_df.site_id.unique():
         sub_df = site_df.loc[site_df.site_id == site]
         assert len(sub_df) < 2, "must be only one site record to match"
-        site_dict = {'name': site, }
+        out_dir_site = os.path.join(outdir, site)
+        if not os.path.exists(out_dir_site):
+            os.makedirs(out_dir_site)
+        site_dict = {
+            'name': site, 'date': sub_df.date.values[0],
+            'biomass': sub_df.biomass_g_m2.values[0]}
+        if not os.path.exists(
+                os.path.join(out_dir_site,
+                'modify_management_summary_{}.csv'.format(site))):
+            backcalc.back_calculate_management(
+                site_dict, input_dir, century_dir, out_dir_site, fix_file,
+                n_months, vary, live_or_total, threshold, max_iterations,
+                template_level)
+
+
+def collect_century_biomass_all_sites(match_csv, outdir, save_as):
+    """Collect biomass outputs from Century for all sites in `match_csv`.
+
+    Assume that relevant outputs are in the folder from the first iteration of
+    the back-calc management routine, i.e. the starting schedule submitted to
+    the routine. Collect live and standing dead biomass from 2016.
+
+    """
+    df_list = []
+    site_df = pd.read_csv(match_csv)
+    for site in site_df.site_id.unique():
+        cent_file = os.path.join(
+            outdir, site, 'CENTURY_outputs_iteration0', '{}.lis'.format(site))
+        if not os.path.exists(cent_file):
+            continue
+        cent_df = pd.io.parsers.read_fwf(cent_file, skiprows=[1])
+        df_subset = cent_df[(cent_df.time > 2016) & (cent_df.time <= 2017)]
+        biomass_df = df_subset[['time', 'aglivc', 'stdedc']]
+        live_biomass = biomass_df.aglivc * 2.5  # grams per square m
+        dead_biomass = biomass_df.stdedc * 2.5  # grams per square m
+        biomass_df['live'] = live_biomass
+        biomass_df['standing_dead'] = dead_biomass
+        biomass_df['total'] = live_biomass + dead_biomass
+        biomass_df['site'] = site
+        biomass_df.set_index('time', inplace=True)
+        df_list.append(biomass_df)
+    combined_df = pd.concat(df_list)
+    combined_df.to_csv(save_as)
+
+
+def summarize_back_calc_biomass(match_csv, outdir, save_as):
+    """Summarize empirical/simulated biomass at starting/ending iterations."""
+    df_list = []
+    site_df = pd.read_csv(match_csv)
+    for site in site_df.site_id.unique():
+        out_csv = os.path.join(
+            outdir, site, 'modify_management_summary_{}.csv'.format(site))
+        if not os.path.exists(out_csv):
+            continue
+        try:
+            out_df = pd.read_csv(out_csv)
+        except pd.errors.EmptyDataError:  # back-calc did not complete
+            continue
+        max_iteration = max(out_df.Iteration)
+        out_df_subset = out_df[
+            (out_df.Iteration == 0) | (out_df.Iteration == max_iteration)]
+        out_df_subset['site'] = site
+        out_df_subset.set_index('site', inplace=True)
+        df_list.append(out_df_subset)
+    combined_df = pd.concat(df_list)
+    combined_df.to_csv(save_as)
+
 
 if __name__ == "__main__":
     # site_csv = r"C:\Users\Ginger\Dropbox\NatCap_backup\Mongolia\model_inputs\sites_median_grass_forb_biomass.csv"
@@ -233,9 +308,17 @@ if __name__ == "__main__":
     # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/avg_sd/biomass_summary.csv'
     # compare_biomass(site_csv, save_as)
     # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/biomass_summary_zero_sd_chirps_GCD_G.csv'
-    save_as = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\monitoring_sites\chirps_prec\zero_sd\biomass_summary_zero_sd_chirps_GCD_G.csv"
-    summarize_biomass(site_csv, save_as)
-    clean_up()
-    save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/min_max_biomass.csv'
+    # save_as = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\monitoring_sites\chirps_prec\zero_sd\biomass_summary_zero_sd_chirps_GCD_G.csv"
+    # summarize_biomass(site_csv, save_as)
+    # clean_up()
+    # save_as = r'C:/Users/Ginger/Dropbox/NatCap_backup/Mongolia/model_results/CHIRPS_pixels/min_max_biomass.csv'
     # calc_variability(site_csv, save_as)
-    # back_calc(site_csv)
+
+    input_dir = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_inputs\SCP_sites\chirps_prec_back_calc"
+    outdir = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\monitoring_sites\chirps_prec_back_calc"
+
+    match_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/summaries_GK/herbaceous_biomass_2016_SCP_CBM.csv"
+    match_csv = "C:/Users/ginge/desktop/missing_sites_backcalc.csv"  # hack
+    back_calc(match_csv, input_dir, outdir)
+    # comparison_csv = r"C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\monitoring_sites\chirps_prec_back_calc\match_summary.csv"
+    # summarize_back_calc_biomass(match_csv, outdir, comparison_csv)

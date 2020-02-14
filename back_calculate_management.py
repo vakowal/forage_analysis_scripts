@@ -182,7 +182,7 @@ def back_calculate_management(
                 # check difference between simulated and empirical biomass
                 if float(abs(
                         simulated_biomass - empirical_biomass)) <= threshold:
-                    print "Biomass target reached!"
+                    print("Biomass target reached!")
                     break  # success!
                 else:
                     # these are the guts of the routine, where either the
@@ -200,8 +200,8 @@ def back_calculate_management(
                             increase_intensity, graz_file, template_level,
                             out_dir, site['name'] + str(iter))
                         if not success:
-                            print """intensity cannot be modified, %d
-                                     iterations completed""" % (iter - 1)
+                            print("""intensity cannot be modified, %d
+                                     iterations completed""" % (iter - 1))
                             break
                     elif vary == 'schedule':
                         # add or remove scheduled grazing events
@@ -227,11 +227,11 @@ def back_calculate_management(
                                 increase_intensity, graz_file, template_level,
                                 out_dir, site['name'] + str(iter))
                             if not success:
-                                print """intensity cannot be modified, %d
-                                         iterations completed""" % (iter - 1)
+                                print("""intensity cannot be modified, %d
+                                         iterations completed""" % (iter - 1))
                                 break
                 if iter == (max_iterations - 1):
-                    print 'maximum iterations performed, target not reached'
+                    print('maximum iterations performed, target not reached')
     finally:
         # replace modified grazing parameters and schedule files with original
         # files

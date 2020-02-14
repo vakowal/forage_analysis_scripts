@@ -53,8 +53,8 @@ def convert_to_century_date(year, month):
     return float('%.2f' % (year + month / 12.))
 
 def divide_CHIRPS_by_10():
-    chirps_dir = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\CHIRPS\raw_data\CHIRPS\2006-2017"
-    div_by_10_dir = r"C:\Users\ginge\Documents\NatCap\GIS_local\Mongolia\CHIRPS\div_by_10"
+    chirps_dir = r"E:\GIS_local\Mongolia\CHIRPS\raw_data\CHIRPS\2019"
+    div_by_10_dir = r"E:\GIS_local\Mongolia\CHIRPS\div_by_10"
     if not os.path.exists(div_by_10_dir):
         os.makedirs(div_by_10_dir)
 
@@ -1179,10 +1179,10 @@ if __name__ == "__main__":
     old_model_input_dir = os.path.join(old_model_processing_dir, 'model_inputs')
     old_model_output_dir = "C:\Users\ginge\Dropbox\NatCap_backup\Mongolia\model_results\iems_2018"
 
-    # divide_CHIRPS_by_10()
+    divide_CHIRPS_by_10()
     # old_model_inputs_dict = generate_inputs_for_old_model(
         # old_model_processing_dir, old_model_input_dir)
     # generate_model_result_rasters()
     # erase_files(old_model_output_dir)
     # process_EO()
-    test_animal_distribution()
+    # test_animal_distribution()
