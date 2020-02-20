@@ -31,10 +31,10 @@ def generate_base_args(workspace_dir):
         'results_suffix': "",
         'starting_month': 9,
         'starting_year': 2016,
-        'n_months': 23,  # ideally 39 to get us through 2019,
+        'n_months': 39,  # 16 for comparison with NDVI, 39 to run all the way through 2019
         'aoi_path': os.path.join(
             DATA_DIR, 'soums_monitoring_area_diss.shp'),
-        'management_threshold': 2000,
+        'management_threshold': 100,
         'proportion_legume_path': os.path.join(
             DATA_DIR, 'prop_legume.tif'),
         'bulk_density_path': os.path.join(
@@ -70,6 +70,7 @@ def generate_base_args(workspace_dir):
         # 'pft_initial_table': "C:/Users/ginge/Dropbox/sample_inputs/pft_initial_table.csv",
         # 'site_initial_table': "C:/Users/ginge/Dropbox/sample_inputs/site_initial_table.csv",
         'initial_conditions_dir': os.path.join(DATA_DIR, 'initial_conditions'),
+        'animal_density': os.path.join(DATA_DIR, 'animal_per_ha_winter_camp_scaled.tif'),
     }
     return args
 
@@ -231,13 +232,13 @@ def copy_rpm_outputs(workspace_dir, n_months, copy_dir):
 def extend():
     """Launch the model to extend from previous results."""
     # the final step of the previous model run. This becomes m-1
-    last_successful_step = 23
+    last_successful_step = 25
     # total number of months to run
     total_n_months = 39
     n_months = total_n_months - last_successful_step
     outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/temp_model_outputs_initialized_by_Century"
-    existing_dir = os.path.join(outer_dir, 'zero_sd')
-    extend_dir = os.path.join(outer_dir, 'zero_sd_extend')
+    existing_dir = os.path.join(outer_dir, 'uniform_density_per_soum')
+    extend_dir = os.path.join(outer_dir, 'uniform_density_per_soum_extend')
     if not os.path.exists(extend_dir):
         os.makedirs(extend_dir)
     rpm_args = generate_base_args(extend_dir)
@@ -265,7 +266,7 @@ def extend():
     rpm_args['initial_conditions_dir'] = initial_conditions_dir
     rpm_args['n_months'] = n_months
     rpm_args['starting_year'] = 2018
-    rpm_args['starting_month'] = 8
+    rpm_args['starting_month'] = 11
     forage.execute(rpm_args)
 
     # copy outputs from extend simulation into original
@@ -278,28 +279,135 @@ def extend():
         shutil.copytree(src_dir, dest_dir)
 
 
+def CHIRPS_precip_to_table(
+        n_months, starting_month, starting_year, point_shp_path, save_as):
+    """Extract values from CHIRPS rasters and write to table.
+
+    Parameters:
+        n_months (int): number of model steps to collect outputs from
+        starting_month (int): starting month to collect (i.e. 1=January)
+        starting_year (int): starting year to collect
+        point_shp_path (string): path to shapefile containing points where
+            values should be collected. must be in geographic coordinates
+        save_as (string): path to location where the summary table should be
+            written
+
+    Side effects:
+        creates or modifies a csv table containing monthly precipitation at the
+        location `save_as`
+
+    Returns:
+        None
+
+    """
+    chirps_path_pattern = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/CHIRPS_div_by_10/chirps-v2.0.<year>.<month>.tif"
+    df_list = []
+    for month_index in range(n_months):
+        current_month = (starting_month + month_index - 1) % 12 + 1
+        current_year = starting_year + (starting_month + month_index - 1) // 12
+        precip_path = chirps_path_pattern.replace(
+            '<year>', str(current_year)).replace(
+                '<month>', '{:02d}'.format(current_month))
+        precip_df = raster_values_at_points(
+            point_shp_path, precip_path, 1, 'precip_cm')
+        precip_df['step'] = month_index
+        df_list.append(precip_df)
+    sum_df = pandas.concat(df_list)
+    sum_df.to_csv(save_as, index=False)
+
+
+def animal_density_to_table(
+        workspace_dir, n_months, starting_month, starting_year, point_shp_path,
+        save_as):
+    """Extract animal density values at points and write to table.
+
+    Parameters:
+        workspace_dir (string): directory where RPM results have been stored
+        n_months (int): number of model steps to collect outputs from
+        starting_month (int): starting month to collect (i.e. 1=January)
+        starting_year (int): starting year to collect
+        point_shp_path (string): path to shapefile containing points where
+            values should be collected. must be in geographic coordinates
+        save_as (string): path to location where the summary table should be
+            written
+
+    Side effects:
+        creates or modifies a csv table containing animal density at the
+        location `save_as`
+
+    Returns:
+        None
+
+    """
+    density_path_pattern = os.path.join(
+        workspace_dir, 'output', 'animal_density_<year>_<month>.tif')
+    df_list = []
+    for month_index in range(n_months):
+        current_month = (starting_month + month_index - 1) % 12 + 1
+        current_year = starting_year + (starting_month + month_index - 1) // 12
+        density_path = density_path_pattern.replace(
+            '<year>', str(current_year)).replace('<month>', str(current_month))
+        density_df = raster_values_at_points(
+            point_shp_path, density_path, 1, 'sfu_per_ha')
+        density_df['step'] = month_index
+        df_list.append(density_df)
+    sum_df = pandas.concat(df_list)
+    sum_df.to_csv(save_as, index=False)
+
+
+def collect_precip_and_animal_density():
+    """wrapper to extract precip and animal density values to points."""
+    precip_table_dir = "C:/Users/ginge/Desktop/CHIRPS_precip_tables"
+    if not os.path.exists(precip_table_dir):
+        os.makedirs(precip_table_dir)
+    n_months = 39
+    starting_month = 9
+    starting_year = 2016
+    for point_shp_path in SAMPLE_PATH_LIST:
+        save_as = os.path.join(
+            precip_table_dir, "CHIRPS_precip_{}.csv".format(
+                os.path.basename(point_shp_path)[:-4]))
+        CHIRPS_precip_to_table(
+            n_months, starting_month, starting_year, point_shp_path, save_as)
+
+    rpm_results_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/temp_model_outputs_initialized_by_Century/compare_to_ndvi_v2"
+    animal_density_dir = "C:/Users/ginge/Desktop/animal_density_tables"
+    if not os.path.exists(animal_density_dir):
+        os.makedirs(animal_density_dir)
+    n_months = 16
+    for point_shp_path in SAMPLE_PATH_LIST:
+        save_as = os.path.join(
+            animal_density_dir, "animal_density_{}.csv".format(
+                os.path.basename(point_shp_path)[:-4]))
+        animal_density_to_table(
+            rpm_results_dir, n_months, starting_month, starting_year,
+            point_shp_path, save_as)
+
+
 def main():
     """Launch model and check results."""
     outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/temp_model_outputs_initialized_by_Century"
-    workspace_dir = os.path.join(outer_dir, 'zero_sd')
+    workspace_dir = os.path.join(outer_dir, 'winter_camps_v3')
     if not os.path.exists(workspace_dir):
         os.makedirs(workspace_dir)
     rpm_args = generate_base_args(workspace_dir)
-    # forage.execute(rpm_args)
+    # TODO remove
+    forage.reclassify_nodata(rpm_args['animal_density'], -1.0)
+    forage.execute(rpm_args)
 
     # extract results to a table
     for point_shp_path in SAMPLE_PATH_LIST:
-        n_months = 40  # TODO how many ran successfully?
-        save_as = "C:/Users/ginge/Desktop/zero_sd/biomass_summary_{}.csv".format(
+        n_months = 39  # TODO how many ran successfully?
+        save_as = "C:/Users/ginge/Desktop/winter_camps_v3/biomass_summary_{}.csv".format(
             os.path.basename(point_shp_path)[:-4])
         rpm_results_to_table(workspace_dir, n_months, point_shp_path, save_as)
 
     # copy aglivc and stdedc rasters to a folder to upload and share
-    copy_dir = "C:/Users/ginge/Desktop/zero_sd/RPM_outputs"
+    copy_dir = "C:/Users/ginge/Desktop/winter_camps_v3/RPM_outputs"
     copy_rpm_outputs(workspace_dir, n_months, copy_dir)
 
 
 if __name__ == "__main__":
     __spec__ = None  # for running with pdb
-    extend()
+    # extend()
     main()
