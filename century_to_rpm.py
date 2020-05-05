@@ -1,14 +1,12 @@
 """Launch Century for multiple sites, to obtain starting conditions for RPM."""
 import os
 import time
-
-from osgeo import gdal
 import re
 import shutil
-import tempfile
-import pandas
-import numpy
 from subprocess import Popen
+
+from osgeo import gdal
+import pandas
 
 import pygeoprocessing
 
@@ -33,8 +31,8 @@ def write_century_bat(
         century_bat (string): filename, the batch file will be saved here
         schedule (string): basename of Century schdule file, a text file with
             the extension '.sch'
-        output (string): basename of output files that should be written, not
-            including file extension
+        output (string): basename of output files that should be written,
+            optionally including file extension
         fix_file (string): basename of Century fix file to use in simulation,
             e.g. 'drytrpfix.100'
         outvars (string): basename of text file containing output variables
@@ -157,7 +155,7 @@ def launch_century_subprocess(bat_file):
     raise ValueError(error)
 
 
-def launch_sites(site_csv, input_dir, outer_outdir):
+def launch_sites(site_csv, shp_id_field, input_dir, outer_outdir):
     """Launch Century executable for a series of sites.
 
     For each of a series of sites expressed as rows in a csv table, fetch
@@ -166,9 +164,11 @@ def launch_sites(site_csv, input_dir, outer_outdir):
 
     Parameters:
         site_csv (string): path to a table containing coordinates labels
-            for a series of sites.  Must contain a column, site_id, which is a
-            site label that matches basename of inputs in `input_dir` that may
-            be used to run Century
+            for a series of sites.  Must contain a column, shp_id_field, which
+            is a site label that matches basename of inputs in `input_dir` that
+            may be used to run Century
+        shp_id_field (string): site label, included as a field in `site_csv`
+            and used as basename of Century input files
         input_dir (string): path to a directory containing Century input files
             for each site in `site_csv`
         outer_outdir (string): path to a directory where Century results should
@@ -190,34 +190,34 @@ def launch_sites(site_csv, input_dir, outer_outdir):
 
     site_list = pandas.read_csv(site_csv).to_dict(orient='records')
     for site in site_list:
-        site_id = site['site_id']
+        site_id = site[shp_id_field]
         outdir = os.path.join(outer_outdir, '{}'.format(site_id))
         if not os.path.exists(outdir):
             os.makedirs(outdir)
 
         # write Century batch file for spin-up simulation
-        hist_bat_bn = site_id + '_hist.bat'
+        hist_bat_bn = '{}_hist.bat'.format(site_id)
         hist_bat = os.path.join(_CENTURY_DIRECTORY, hist_bat_bn)
-        hist_schedule = site_id + '_hist.sch'
-        hist_output = site_id + '_hist'
+        hist_schedule = '{}_hist.sch'.format(site_id)
+        hist_output = '{}_hist'.format(site_id)
         write_century_bat(
             hist_bat, hist_schedule, hist_output, _FIX_FILE, 'outvars.txt')
 
         # write Century batch file for extend simulation
-        extend_bat_bn = site_id + '.bat'
+        extend_bat_bn = '{}.bat'.format(site_id)
         extend_bat = os.path.join(_CENTURY_DIRECTORY, extend_bat_bn)
-        schedule = site_id + '.sch'
-        output = site_id
-        extend = site_id + '_hist'
+        schedule = '{}.sch'.format(site_id)
+        output = '{}.lis'.format(site_id)
+        extend = '{}_hist'.format(site_id)
         write_century_bat(
             extend_bat, schedule, output, _FIX_FILE, 'outvars.txt', extend)
 
         # move Century input files to Century dir
         input_files = []
-        input_files.append(site_id + '.sch')
-        input_files.append(site_id + '_hist.sch')
+        input_files.append('{}.sch'.format(site_id))
+        input_files.append('{}_hist.sch'.format(site_id))
         site_file, weather_file = get_site_weather_files(
-            os.path.join(input_dir, site_id + '.sch'))
+            os.path.join(input_dir, '{}.sch'.format(site_id)))
         input_files.append(site_file)
         if weather_file != 'NA':
             input_files.append(weather_file)
@@ -233,9 +233,10 @@ def launch_sites(site_csv, input_dir, outer_outdir):
         finally:
             # move Century outputs to results folder
             output_files = [
-                site_id + '_hist_log.txt', site_id + '_hist.lis',
-                site_id + '_hist.bin',
-                site_id + '_log.txt', site_id + '.lis', site_id + '.bin']
+                '{}_hist_log.txt'.format(site_id), '{}_hist.lis'.format(site_id),
+                '{}_hist.bin'.format(site_id),
+                '{}_log.txt'.format(site_id), '{}.lis'.format(site_id),
+                '{}.bin'.format(site_id)]
             for output_basename in output_files:
                 if os.path.exists(
                         os.path.join(_CENTURY_DIRECTORY, output_basename)):
@@ -397,7 +398,7 @@ def century_outputs_to_rpm_initial_rasters(
 
 
 def summarize_century_biomass(
-        site_csv, outer_outdir, start_time, end_time, save_as):
+        site_csv, shp_id_field, outer_outdir, start_time, end_time, save_as):
     """Collect outputs from Century results at a series of sites.
 
     Make a table of simulated biomass, including live and standing dead, for
@@ -407,6 +408,8 @@ def summarize_century_biomass(
         site_csv (string): path to a table containing coordinates and labels
             for a series of sites.  Must contain a column, 'site_id', that
             identifies the Century outputs pertaining to each site
+        shp_id_field (string): site label, included as a field in `site_csv`
+            and used as basename of Century input files
         outer_outdir (string): path to a directory containing Century output
             files. It is expected that this directory contains a separate
             folder of outputs for each site
@@ -425,7 +428,7 @@ def summarize_century_biomass(
     site_list = pandas.read_csv(site_csv).to_dict(orient='records')
     df_list = []
     for site in site_list:
-        site_id = site['site_id']
+        site_id = site[shp_id_field]
         output_file = os.path.join(
             outer_outdir, '{}'.format(site_id), '{}.lis'.format(site_id))
         cent_df = pandas.read_fwf(output_file, skiprows=[1])
@@ -443,8 +446,8 @@ def summarize_century_biomass(
     sum_df.to_csv(save_as)
 
 
-def main():
-    """Program entry point."""
+def wcs_monitoring_points_workflow():
+    """Run Century to get initialization rasters for WCS monitoring area."""
     site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/soil/monitoring_points_soil_isric_250m.csv"
     input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/chirps_prec_back_calc"
     outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/monitoring_sites/chirps_prec_back_calc_2.13.20"
@@ -461,6 +464,24 @@ def main():
     save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
     summarize_century_biomass(
         site_csv, outer_outdir, start_time, end_time, save_as)
+
+
+def julian_ahlborn_sites_workflow():
+    """Run Century to get initialization rasters for Julian Ahlborn's sites."""
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs"
+    # launch_sites(site_csv, 'site', input_dir, outer_outdir)
+    start_time = 2014.08
+    end_time = 2015.00
+    save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
+    summarize_century_biomass(
+        site_csv, 'site', outer_outdir, start_time, end_time, save_as)
+
+
+def main():
+    """Program entry point."""
+    julian_ahlborn_sites_workflow()
 
 
 if __name__ == "__main__":
