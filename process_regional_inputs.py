@@ -1512,11 +1512,76 @@ def coordinates_at_points(point_shp_path, shp_id_field):
     return report_table
 
 
+def map_FID_to_field(shp_path, field):
+    """Map FID of each feature, according to GetFID(), to the given field.
+
+    This allows for mapping of a dictionary of zonal statistics, where keys
+    correspond to FID according to GetFID(), to another field that is preferred
+    to identify features.
+
+    Parameters:
+        shp_path (string): path to shapefile
+        field (string): the field to map to FID
+
+    Returns:
+        dictionary indexed by the FID of each feature retrieved with GetFID(),
+            and values are the value of `field` for the feature
+
+    """
+    vector = gdal.OpenEx(shp_path, gdal.OF_VECTOR)
+    layer = vector.GetLayer()
+    FID_to_field = {
+        feature.GetFID(): feature.GetField(field) for feature in layer}
+
+    # clean up
+    vector = None
+    layer = None
+    return FID_to_field
+
+
+def mean_raster_values_in_polygons(
+        polygon_shp_path, raster_path, band, shp_id_field, raster_field_name):
+    """Collect mean zonal values from a raster inside polygon features.
+
+    Parameters:
+        polygon_shp_path (string): path to shapefile containing polygon
+            features where raster values should be extracted. Must be in
+            geographic coordinates
+        raster_path (string): path to raster containing values that should be
+            extracted at points
+        band (int): band index of the raster to analyze
+        shp_id_field (string): field in point_shp_path identifying features
+        raster_field_name (string): name to assign to the field in the data
+            frame that contains mean values calculated from the raster
+
+    Returns:
+        a data frame with one column shp_id_field containing shp_id_field
+            values of polygon features, and one column raster_field_name
+            containing mean values from the raster inside polygon features
+
+    """
+    fid_to_field = map_FID_to_field(polygon_shp_path, shp_id_field)
+    zonal_stats_dict = pygeoprocessing.zonal_statistics(
+        (raster_path, band), polygon_shp_path)
+    field_zonal_stats_dict = {
+        field: zonal_stats_dict[fid] for (fid, field) in
+        fid_to_field.items()
+    }
+    field_df = pandas.DataFrame(field_zonal_stats_dict)
+    field_df_t = field_df.transpose()
+    field_df_t[shp_id_field] = field_df_t.index
+    field_df_t[raster_field_name] = (
+        field_df_t['sum'] / field_df_t['count'])
+    field_df_t.drop(
+        ['min', 'max', 'count', 'nodata_count', 'sum'], axis='columns',
+        inplace=True)
+    return field_df_t
+
+
 def raster_values_at_points(
         point_shp_path, raster_path, band, shp_id_field, raster_field_name):
     """Collect values from a raster intersecting points in a shapefile.
 
-    Create
     Parameters:
         point_shp_path (string): path to shapefile containing point features
             where raster values should be extracted. Must be in geographic
@@ -1607,11 +1672,17 @@ def Mongolia_Julian_sites_workflow():
         "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
         "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
         wc_temp_table)
-    wc_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_precip.csv"
-    generate_worldclim_precip_table(
-        point_shp_path,
+    wc_convex_hull_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_precip_site_convex_hull.csv"
+    site_convex_hull_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/Julian_Ahlborn/Site_convex_hull.shp"
+    generate_worldclim_precip_table_in_polygons(
+        site_convex_hull_path,
         "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
         0.1, wc_precip_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_precip.csv"
+    generate_worldclim_precip_table_at_points(
+        point_shp_path,
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+        0.1, wc_point_precip_table)
     soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
     generate_soil_table(
         point_shp_path, 'site',
@@ -1621,12 +1692,12 @@ def Mongolia_Julian_sites_workflow():
         "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
         "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
         soil_table)
-    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule.100"
+    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N.100"
     inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs"
     if not os.path.exists(inputs_dir):
         os.makedirs(inputs_dir)
-    write_site_files_mongolia(template_100, soil_table, 'site', inputs_dir)
-    worldclim_to_site_file(wc_precip_table, wc_temp_table, inputs_dir)
+    # write_site_files_mongolia(template_100, soil_table, 'site', inputs_dir)
+    worldclim_to_site_file(wc_point_precip_table, wc_temp_table, inputs_dir)
     template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
     template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule.sch"
     make_sch_files_mongolia(
@@ -1738,9 +1809,9 @@ def generate_worldclim_temperature_table(
     tmin_merged_df.to_csv(save_as, index=False)
 
 
-def generate_worldclim_precip_table(
+def generate_worldclim_precip_table_at_points(
         point_shp_path, precip_pattern, multiply_factor, save_as):
-    """Generate a table of monthly precipitation from Worldclim.
+    """Generate a table of monthly precipitation at points from Worldclim.
 
     Parameters:
         point_shp_path (string): path to shapefile containing point features
@@ -1768,6 +1839,46 @@ def generate_worldclim_precip_table(
         precip_path = precip_pattern.replace('<month>', '%.2d' % month)
         precip_df = raster_values_at_points(
             point_shp_path, precip_path, 1, 'site', 'precip_raw')
+        precip_df['prec'] = precip_df['precip_raw'] * float(multiply_factor)
+        precip_df['month'] = month
+        precip_df_subs = precip_df[['site', 'month', 'prec']]
+        precip_df_list.append(precip_df_subs)
+    precip_merged_df = pandas.concat(precip_df_list)
+    precip_merged_df.to_csv(save_as, index=False)
+
+
+def generate_worldclim_precip_table_in_polygons(
+        polygon_shp_path, precip_pattern, multiply_factor, save_as):
+    """Generate a table of monthly precipitation in polygons from Worldclim.
+
+    Parameters:
+        polygon_shp_path (string): path to shapefile containing polygon
+            features where raster values should be extracted. Monthly
+            precipitation will be calculated as the average value across pixels
+            falling inside each polygon feature. Must be in geographic
+            coordinates
+        precip_pattern (string): pattern that can be used to locate worlclim
+            precipitation rasters, where '<month>' can be replaced with
+            the given month. e.g.
+            "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif"
+        save_as (string): path to location where precip table should be
+            saved
+        multiply_factor (float or int): factor by which values in the rasters
+            should be multiplied, to get precipitation in cm
+
+    Side effects:
+        creates a table at the location indicated by `save_as`, with three
+            columns: site (site ids), month (1:12), prec (precipitation in cm)
+
+    Returns:
+        None
+
+    """
+    precip_df_list = []
+    for month in range(1, 13):
+        precip_path = precip_pattern.replace('<month>', '%.2d' % month)
+        precip_df = mean_raster_values_in_polygons(
+            polygon_shp_path, precip_path, 1, 'site', 'precip_raw')
         precip_df['prec'] = precip_df['precip_raw'] * float(multiply_factor)
         precip_df['month'] = month
         precip_df_subs = precip_df[['site', 'month', 'prec']]
