@@ -1028,10 +1028,11 @@ def wth_to_site_file(soil_table, input_dir):
         shutil.copyfile(abs_path, site_file)
         os.remove(abs_path)
 
-def worldclim_to_site_file(wc_precip, wc_temp, site_file_dir):
+def worldclim_to_site_file(shp_id_field, wc_precip, wc_temp, site_file_dir):
     """Write Worldclim averages into existing site files.
 
     Parameters:
+        shp_id_field (string): field in point_shp_path identifying features
         wc_precip (string): path to table containing average monthly precip in
             cm for each site
         wc_temp (string): path to table containing average monthly minimum and
@@ -1050,12 +1051,12 @@ def worldclim_to_site_file(wc_precip, wc_temp, site_file_dir):
     """
     prec_df = pandas.read_csv(wc_precip)
     temp_df = pandas.read_csv(wc_temp)
-    for site in prec_df.site.unique().tolist():
-        prec_subs = prec_df.loc[prec_df['site'] == site]
+    for site in prec_df[shp_id_field].unique().tolist():
+        prec_subs = prec_df.loc[prec_df[shp_id_field] == site]
         prec_subs = prec_subs.set_index('month')
-        temp_subs = temp_df.loc[temp_df['site'] == site]
+        temp_subs = temp_df.loc[temp_df[shp_id_field] == site]
         temp_subs = temp_subs.set_index('month')
-        site_file = os.path.join(site_file_dir, '{}.100'.format(site))
+        site_file = os.path.join(site_file_dir, '{:.0f}.100'.format(site))
         fh, abs_path = tempfile.mkstemp()
         os.close(fh)
         with open(abs_path, 'w') as newfile:
@@ -1667,41 +1668,85 @@ def Mongolia_Julian_sites_workflow():
     """Generate inputs to run Century at Julian Ahlborn's sampling sites."""
     point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/Julian_Ahlborn/sampling_sites_shapefile/site_centroids.shp"
     wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_temperature.csv"
-    generate_worldclim_temperature_table(
-        point_shp_path,
-        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
-        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
-        wc_temp_table)
+    # generate_worldclim_temperature_table(
+    #     point_shp_path,
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
+    #     wc_temp_table)
     wc_convex_hull_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_precip_site_convex_hull.csv"
     site_convex_hull_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/Julian_Ahlborn/Site_convex_hull.shp"
-    generate_worldclim_precip_table_in_polygons(
-        site_convex_hull_path,
-        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
-        0.1, wc_precip_table)
+    # generate_worldclim_precip_table_in_polygons(
+    #     site_convex_hull_path,
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+    #     0.1, wc_precip_table)
     wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/worldclim_precip.csv"
-    generate_worldclim_precip_table_at_points(
-        point_shp_path,
-        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
-        0.1, wc_point_precip_table)
+    # generate_worldclim_precip_table_at_points(
+    #     point_shp_path,
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+    #     0.1, wc_point_precip_table)
     soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
-    generate_soil_table(
-        point_shp_path, 'site',
-        "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
-        "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
-        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
-        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
-        "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
-        soil_table)
+    # generate_soil_table(
+    #     point_shp_path, 'site',
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+    #     soil_table)
+    # May 2020 runs used the following paramterization
     template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N.100"
     inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs"
+    # August 2020 runs
+    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N25.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs_Aug2020"
+    # if not os.path.exists(inputs_dir):
+    #     os.makedirs(inputs_dir)
+    # write_site_files_mongolia(template_100, soil_table, 'site', inputs_dir)
+    # worldclim_to_site_file(
+    #     'site', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule.sch"
+    # Nov 2020, no grazing last year
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_no_grazing_last_year.sch"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs_Aug2020/no_grazing_last_year"
+    make_sch_files_mongolia(
+        soil_table, 'site', template_hist, template_sch, inputs_dir)
+
+
+def Mongolia_scenario_inputs_workflow():
+    """Generate inputs to run Century at WCS sampling sites."""
+    point_shp_path = "E:/GIS_local/Mongolia/From_Boogie/shapes/GK_reanalysis/CBM_SCP_sites.shp"
+    wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/intermediate_data/worldclim_temperature.csv"
+    # generate_worldclim_temperature_table(
+    #     point_shp_path, 'site_id',
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
+    #     wc_temp_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/intermediate_data/worldclim_precip.csv"
+    # generate_worldclim_precip_table_at_points(
+    #     point_shp_path, 'site_id',
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+    #     0.1, wc_point_precip_table)
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/intermediate_data/soil.csv"
+    # generate_soil_table(
+    #     point_shp_path, 'site_id',
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+    #     soil_table)
+    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N25.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/Century_inputs"
     if not os.path.exists(inputs_dir):
         os.makedirs(inputs_dir)
-    # write_site_files_mongolia(template_100, soil_table, 'site', inputs_dir)
-    worldclim_to_site_file(wc_point_precip_table, wc_temp_table, inputs_dir)
+    write_site_files_mongolia(template_100, soil_table, 'site_id', inputs_dir)
+    worldclim_to_site_file(
+        'site_id', wc_point_precip_table, wc_temp_table, inputs_dir)
     template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
     template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule.sch"
     make_sch_files_mongolia(
-        soil_table, 'site', template_hist, template_sch, inputs_dir)
+        soil_table, 'site_id', template_hist, template_sch, inputs_dir)
 
 
 def generate_soil_table(
@@ -1761,13 +1806,14 @@ def generate_soil_table(
 
 
 def generate_worldclim_temperature_table(
-        point_shp_path, tmin_pattern, tmax_pattern, save_as):
+        point_shp_path, shp_id_field, tmin_pattern, tmax_pattern, save_as):
     """Generate a table of max and min monthly temperature from Worldclim.
 
     Parameters:
         point_shp_path (string): path to shapefile containing point features
             where raster values should be extracted. Must be in geographic
             coordinates
+        shp_id_field (string): field in point_shp_path identifying features
         tmin_pattern (string): pattern that can be used to locate worlclim
             minimum temperature rasters, where '<month>' can be replaced with
             the given month. e.g.
@@ -1791,32 +1837,34 @@ def generate_worldclim_temperature_table(
     tmin_df_list = []
     tmax_df_list = []
     for month in range(1, 13):
-        tmin_path = tmin_pattern.replace('<month>', '%.2d' % month)
+        tmin_path = tmin_pattern.replace('<month>', '{}'.format(month))
         tmin_df = raster_values_at_points(
-            point_shp_path, tmin_path, 1, 'site', 'tmin')
+            point_shp_path, tmin_path, 1, shp_id_field, 'tmin')
         tmin_df['month'] = month
         tmin_df_list.append(tmin_df)
-        tmax_path = tmax_pattern.replace('<month>', '%.2d' % month)
+        tmax_path = tmax_pattern.replace('<month>', '{}'.format(month))
         tmax_df = raster_values_at_points(
-            point_shp_path, tmax_path, 1, 'site', 'tmax')
+            point_shp_path, tmax_path, 1, shp_id_field, 'tmax')
         tmax_df['month'] = month
         tmax_df_list.append(tmax_df)
     tmin_merged_df = pandas.concat(tmin_df_list)
     tmax_merged_df = pandas.concat(tmax_df_list)
     tmin_merged_df = tmin_merged_df.merge(
-        tmax_merged_df, on=['site', 'month'], suffixes=(False, False),
+        tmax_merged_df, on=[shp_id_field, 'month'], suffixes=(False, False),
         validate="one_to_one")
     tmin_merged_df.to_csv(save_as, index=False)
 
 
 def generate_worldclim_precip_table_at_points(
-        point_shp_path, precip_pattern, multiply_factor, save_as):
+        point_shp_path, shp_id_field, precip_pattern, multiply_factor,
+        save_as):
     """Generate a table of monthly precipitation at points from Worldclim.
 
     Parameters:
         point_shp_path (string): path to shapefile containing point features
             where raster values should be extracted. Must be in geographic
             coordinates
+        shp_id_field (string): field in point_shp_path identifying features
         precip_pattern (string): pattern that can be used to locate worlclim
             precipitation rasters, where '<month>' can be replaced with
             the given month. e.g.
@@ -1836,12 +1884,13 @@ def generate_worldclim_precip_table_at_points(
     """
     precip_df_list = []
     for month in range(1, 13):
-        precip_path = precip_pattern.replace('<month>', '%.2d' % month)
+        precip_path = precip_pattern.replace(
+            '<month>', '{}'.format(month))
         precip_df = raster_values_at_points(
-            point_shp_path, precip_path, 1, 'site', 'precip_raw')
+            point_shp_path, precip_path, 1, shp_id_field, 'precip_raw')
         precip_df['prec'] = precip_df['precip_raw'] * float(multiply_factor)
         precip_df['month'] = month
-        precip_df_subs = precip_df[['site', 'month', 'prec']]
+        precip_df_subs = precip_df[[shp_id_field, 'month', 'prec']]
         precip_df_list.append(precip_df_subs)
     precip_merged_df = pandas.concat(precip_df_list)
     precip_merged_df.to_csv(save_as, index=False)
@@ -1887,8 +1936,227 @@ def generate_worldclim_precip_table_in_polygons(
     precip_merged_df.to_csv(save_as, index=False)
 
 
+def raster_values_to_wth_file(
+        point_shp_path, shp_id_field, tmin_pattern, tmax_pattern,
+        precip_pattern, precip_multiply_factor, save_dir):
+    """Generate *.wth file from rasters at points.
+
+
+    Parameters:
+        point_shp_path (string): path to shapefile containing point features
+            where raster values should be extracted. Must be in geographic
+            coordinates
+        shp_id_field (string): field in point_shp_path identifying features
+        tmin_pattern (string): pattern that can be used to locate worlclim
+            minimum temperature rasters, where '<month>' can be replaced with
+            the given month. e.g.
+            "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif"
+        tmax_pattern (string): pattern that can be used to locate worlclim
+            maximum temperature rasters, where '<month>' can be replaced with
+            the given month. e.g.
+            "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif"
+        precip_multiply_factor (float or int): factor by which values in the
+            precip rasters should be multiplied, to get precipitation in cm
+        save_dir (string): path to location where temperature tables should be
+            saved
+
+    Side effects:
+        creates a file in `save_dir` for each feature in `point_shp_path`,
+            where the basename of the file is the value of `shp_id_field` for
+            that feature.
+
+    Returns:
+        None
+
+    """
+    df_list = []
+    for month in range(1, 13):
+        tmin_path = tmin_pattern.replace('<month>', '{}'.format(month))
+        tmin_df = raster_values_at_points(
+            point_shp_path, tmin_path, 1, shp_id_field, 'value')
+        tmin_df['month'] = month
+        tmin_df['label'] = 'tmin'
+        tmax_path = tmax_pattern.replace('<month>', '{}'.format(month))
+        tmax_df = raster_values_at_points(
+            point_shp_path, tmax_path, 1, shp_id_field, 'value')
+        tmax_df['month'] = month
+        tmax_df['label'] = 'tmax'
+        precip_path = precip_pattern.replace(
+            '<month>', '{}'.format(month))
+        precip_df = raster_values_at_points(
+            point_shp_path, precip_path, 1, shp_id_field, 'precip_raw')
+        precip_df['value'] = precip_df['precip_raw'] * float(
+            precip_multiply_factor)
+        precip_df['month'] = month
+        precip_df_subs = precip_df[[shp_id_field, 'month', 'value']]
+        precip_df_subs['label'] = 'prec'
+        month_df = pandas.concat([tmin_df, tmax_df, precip_df_subs])
+        reduced_df = month_df.dropna()
+        df_list.append(reduced_df)
+    combined_df = pandas.concat(df_list)
+    combined_df.to_csv(os.path.join(save_dir, 'weather_data.csv')) # split into sites by hand!!
+
+
+def eastern_steppe_time_series_points():
+    """Generate Century inputs at time series points in the eastern steppe."""
+    outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/time_series_points"
+    if not os.path.exists(outer_dir):
+        os.makedirs(outer_dir)
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/time_series_points.shp"
+    # wc_temp_table = os.path.join(outer_dir, "worldclim_temperature.csv")
+    # generate_worldclim_temperature_table(
+    #     point_shp_path, 'id',
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min/wc2.0_30s_tmin_<month>.tif",
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max/wc2.0_30s_tmax_<month>.tif",
+    #     wc_temp_table)
+    # wc_point_precip_table = os.path.join(
+    #     outer_dir, "worldclim_precip.csv")
+    # generate_worldclim_precip_table_at_points(
+    #     point_shp_path, 'id',
+    #     "E:/GIS_local/Mongolia/Worldclim/Worldclim_baseline/wc2.0_30s_prec_2016_<month>.tif",
+    #     1, wc_point_precip_table)
+    soil_table = os.path.join(outer_dir, 'soil.csv')
+    # generate_soil_table(
+    #     point_shp_path, 'id',
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+    #     "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+    #     soil_table)
+    # template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N25.100"
+    inputs_dir = os.path.join(outer_dir, "Century_inputs")
+    # if not os.path.exists(inputs_dir):
+    #     os.makedirs(inputs_dir)
+    # write_site_files_mongolia(template_100, soil_table, 'id', inputs_dir)
+    # worldclim_to_site_file(
+    #     'id', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_to_2015_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_from_2015.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+    # raster_values_to_wth_file(
+    #     point_shp_path, 'id',
+    #     "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/tmpazi_z8tq/tmin_2016_<month>.tif",
+    #     "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/tmpx4z13wzi/tmax_2016_<month>.tif",
+    #     "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/tmpjyovbsmf/precip_2016_<month>.tif",
+    #     1, inputs_dir)
+
+
+def eastern_steppe_regular_grid_workflow():
+    """Generate Century inputs for regular grid across eastern steppe."""
+    point_shp_path = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/southeastern_aimags_1degree_grid.shp"
+    wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/worldclim_temperature.csv"
+    generate_worldclim_temperature_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min/wc2.0_30s_tmin_<month>.tif",
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max/wc2.0_30s_tmax_<month>.tif",
+        wc_temp_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/worldclim_precip.csv"
+    generate_worldclim_precip_table_at_points(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+        0.1, wc_point_precip_table)
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/soil.csv"
+    generate_soil_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+        soil_table)
+    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N25.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/Century_inputs"
+    if not os.path.exists(inputs_dir):
+        os.makedirs(inputs_dir)
+    write_site_files_mongolia(template_100, soil_table, 'id', inputs_dir)
+    worldclim_to_site_file(
+        'id', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+
+
+def laikipia_regular_grid_workflow():
+    """Generate Century inputs for a regular grid across Laikipia."""
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Laikipia_regular_points_single.shp"
+    wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/worldclim_temperature.csv"
+    generate_worldclim_temperature_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
+        wc_temp_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/worldclim_precip.csv"
+    generate_worldclim_precip_table_at_points(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+        0.1, wc_point_precip_table)
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/soil.csv"
+    generate_soil_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+        soil_table)
+    template_100 = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_inputs"
+    if not os.path.exists(inputs_dir):
+        os.makedirs(inputs_dir)
+    write_site_files_mongolia(template_100, soil_table, 'id', inputs_dir)
+    worldclim_to_site_file(
+        'id', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+
+
+def OPC_regular_grid_workflow():
+    """Generate Century inputs for a regular grid across Ol Pejeta."""
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/OPC_regular_points.shp"
+    wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/worldclim_temperature.csv"
+    generate_worldclim_temperature_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmin/wc2.0_30s_tmin_<month>.tif",
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_tmax/wc2.0_30s_tmax_<month>.tif",
+        wc_temp_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/worldclim_precip.csv"
+    generate_worldclim_precip_table_at_points(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+        0.1, wc_point_precip_table)
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/soil.csv"
+    generate_soil_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+        soil_table)
+    template_100 = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/Century_inputs"
+    if not os.path.exists(inputs_dir):
+        os.makedirs(inputs_dir)
+    write_site_files_mongolia(template_100, soil_table, 'id', inputs_dir)
+    worldclim_to_site_file(
+        'id', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+
 if __name__ == "__main__":
     # laikipia_precip_experiment_workflow()
     # measure_achieved_perturbation()
     # mongolia_workflow()
-    Mongolia_Julian_sites_workflow()
+    # Mongolia_Julian_sites_workflow()
+    # Mongolia_scenario_inputs_workflow()
+    # laikipia_regular_grid_workflow()
+    # OPC_regular_grid_workflow()
+    # eastern_steppe_regular_grid_workflow()
+    eastern_steppe_time_series_points()

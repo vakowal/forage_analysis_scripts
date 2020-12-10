@@ -155,7 +155,8 @@ def launch_century_subprocess(bat_file):
     raise ValueError(error)
 
 
-def launch_sites(site_csv, shp_id_field, input_dir, outer_outdir):
+def launch_sites(
+        site_csv, shp_id_field, input_dir, outer_outdir, fix_file=None):
     """Launch Century executable for a series of sites.
 
     For each of a series of sites expressed as rows in a csv table, fetch
@@ -173,6 +174,8 @@ def launch_sites(site_csv, shp_id_field, input_dir, outer_outdir):
             for each site in `site_csv`
         outer_outdir (string): path to a directory where Century results should
             be saved. A new interior folder will be created here for each site
+        fix_file (string): basename of Century fix file. If none, the fix file
+            used for Century simulations has the global value _FIX_FILE
 
     Side effects:
         Creates inner directories, one per row in `site_csv`, in `outer_outdir`
@@ -182,6 +185,9 @@ def launch_sites(site_csv, shp_id_field, input_dir, outer_outdir):
         None
 
     """
+    if fix_file:
+        global _FIX_FILE
+        _FIX_FILE = fix_file
     # assume fix file is in the input directory, copy it to Century
     #   directory
     shutil.copyfile(
@@ -267,8 +273,8 @@ def century_to_rpm(century_label):
 
 
 def century_outputs_to_rpm_initial_rasters(
-        site_csv, outer_outdir, year, month, site_index_path,
-        initial_conditions_dir):
+        site_csv, shp_id_field, outer_outdir, year, month, site_index_path,
+        initial_conditions_dir, raster_id_field=None):
     """Generate initial conditions rasters for RPM from raw Century outputs.
 
     Take outputs from a series of Century runs and convert them to initial
@@ -277,9 +283,11 @@ def century_outputs_to_rpm_initial_rasters(
 
     Parameters:
         site_csv (string): path to a table containing coordinates labels
-            for a series of sites.  Must contain a column, 'site_id', that
-            identifies the Century outputs pertaining to each site; and another
-            column, 'site_id_num', that is a unique integer code for each site
+            for a series of sites.  Must contain a column, shp_id_field, which
+            is a site label that matches basename of inputs in `input_dir` that
+            may be used to run Century
+        shp_id_field (string): site label, included as a field in `site_csv`
+            and used as basename of Century input files
         outer_outdir (string): path to a directory containing Century output
             files. It is expected that this directory contains a separate
             folder of outputs for each site
@@ -291,6 +299,9 @@ def century_outputs_to_rpm_initial_rasters(
             corresponding to a set of points where Century has been run
         initial_conditions_dir (string): path to directory where initial
             conditions rasters should be written
+        raster_id_field (integer): field in `site_csv` that corresponds to
+            values in `site_index_path`. If this is none, it is assumed that
+            this field is the same as `shp_index_field`
 
     Side effects:
         creates or modifies rasters in `initial_conditions_dir`, one per state
@@ -316,8 +327,11 @@ def century_outputs_to_rpm_initial_rasters(
     pft_df_list = []
     site_list = pandas.read_csv(site_csv).to_dict(orient='records')
     for site in site_list:
-        site_id = site['site_id']
-        site_id_num = site['site_id_num']
+        site_id = site[shp_id_field]
+        if raster_id_field:
+            raster_map_value = site[raster_id_field]
+        else:
+            raster_map_value = site_id
         century_output_file = os.path.join(
             outer_outdir, '{}'.format(site_id), '{}.lis'.format(site_id))
         test_output_list = outvar_df[
@@ -361,7 +375,7 @@ def century_outputs_to_rpm_initial_rasters(
             col_rename_dict = {
                 c: century_to_rpm(c) for c in outputs.columns.values}
             outputs.rename(index=int, columns=col_rename_dict, inplace=True)
-            outputs[sbstr] = site_id_num
+            outputs[sbstr] = raster_map_value
             if sbstr == 'site':
                 site_df_list.append(outputs)
             if sbstr == 'PFT':
@@ -446,42 +460,471 @@ def summarize_century_biomass(
     sum_df.to_csv(save_as)
 
 
+def century_outputs_to_initial_tables(
+        century_output_file, year, month, site_initial_table,
+        pft_initial_table):
+    """Generate initial value tables from raw Century outputs.
+
+    Take outputs from a single Century run and format them as initial values
+    tables for the Rangeland model. The resulting initial values tables will
+    represent one site type and one plant functional type, both indexed by '1'.
+
+    Parameters:
+        century_output_file (string): path to output file containing Century
+            outputs, e.g. the file extension of this file should be '.lis'
+        year (integer): year of the date from which to draw initial values
+        month (integer): month of the date from which to draw initial values
+        site_initial_table (string): path to filename where site initial value
+            table should be created
+        pft_initial_table (string): path to filename where plant functional
+            type initial value table should be created
+
+    Side effects:
+        creates or modifies the csv file indicated by `site_initial_table`
+        creates or modifies the csv file indicated by `pft_initial_table`
+
+    Returns:
+        None
+
+    """
+    def century_to_rp(century_label):
+        """Convert Century name to rangeland production name."""
+        rp = re.sub(r"\(", "_", century_label)
+        rp = re.sub(r",", "_", rp)
+        rp = re.sub(r"\)", "", rp)
+        return rp
+
+    time = convert_to_century_date(year, month)
+    outvar_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/GK_doc/Century_state_variables.csv"
+    outvar_df = pandas.read_csv(outvar_csv)
+    outvar_df['outvar'] = [v.lower() for v in outvar_df.State_variable_Century]
+    outvar_df.sort_values(by=['outvar'], inplace=True)
+    for sbstr in ['PFT', 'site']:
+        output_list = outvar_df[
+            outvar_df.Property_of == sbstr].outvar.tolist()
+        cent_df = pandas.read_fwf(century_output_file, skiprows=[1])
+        # mistakes in Century writing results
+        if 'minerl(10,1' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                inplace=True)
+        if 'minerl(10,2' in cent_df.columns.values:
+            cent_df.rename(
+                index=str, columns={'minerl(10,2': 'struce(2,2)'},
+                inplace=True)
+        try:
+            fwf_correct = cent_df[output_list]
+        except KeyError:
+            # try again, specifying widths explicitly
+            widths = [16] * 79
+            cent_df = pandas.read_fwf(
+                century_output_file, skiprows=[1], widths=widths)
+            # mistakes in Century writing results
+            if 'minerl(10,1' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,1': 'minerl(10,1)'},
+                    inplace=True)
+            if 'minerl(10,2' in cent_df.columns.values:
+                cent_df.rename(
+                    index=str, columns={'minerl(10,2': 'minerl(10,2)'},
+                    inplace=True)
+        df_subset = cent_df[(cent_df.time == time)]
+        df_subset = df_subset.drop_duplicates('time')
+        outputs = df_subset[output_list]
+        outputs = outputs.loc[:, ~outputs.columns.duplicated()]
+        col_rename_dict = {c: century_to_rp(c) for c in outputs.columns.values}
+        outputs.rename(index=int, columns=col_rename_dict, inplace=True)
+        outputs[sbstr] = 1
+        if sbstr == 'site':
+            outputs.to_csv(site_initial_table, index=False)
+        if sbstr == 'PFT':
+            outputs.to_csv(pft_initial_table, index=False)
+
+
+def century_params_to_new_model_params(
+        pft_param_path, animal_param_path, site_param_path):
+    """Generate parameter inputs for the new forage model.
+
+    Site and pft parameters for the new forage model come from various
+    files used by Century.  Gather these parameters together from all
+    Century parameter files and format them as csvs as expected by new
+    forage model.
+
+    Parameters:
+        pft_param_path (string): path where the pft parameter table for RPM
+            should be saved
+        animal_param_path (string): path where the animal parameter table for
+            RPM should be saved
+        site_param_path (string): path where the site parameter table for RPM
+            should be saved
+
+    Returns:
+        None
+
+    """
+    CENTURY_DIR = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Century46_PC_Jan-2014"
+    TEMPLATE_HIST = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0_hist.sch"
+    TEMPLATE_SCH = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.sch"
+    TEMPLATE_100 = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.100"
+    new_model_args = {
+        'template_level': 'GLP',
+        'fix_file': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_inputs/drytrpfi.100",
+        'grass_type': 'C4',
+        'herbivore_csv': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herd_avg_uncalibrated.csv"
+    }
+    # parameter table containing only necessary parameters
+    parameter_table = pandas.read_csv(
+        "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/GK_doc/Century_parameter_table.csv")
+    parameters_to_keep = parameter_table['Century parameter name'].tolist()
+    crop_params = os.path.join(CENTURY_DIR, 'crop.100')
+
+    # get crop from TEMPLATE_HIST and TEMPLATE_SCH
+    first_month = set()
+    senescence_month = set()
+    last_month = set()
+    crop_list = set()
+    with open(TEMPLATE_HIST, 'r') as hist_sch:
+        for line in hist_sch:
+            if ' CROP' in line:
+                crop_line = next(hist_sch)
+                crop_list.add(crop_line[:10].strip())
+            if ' FRST' in line:
+                first_month.add(line[7:10].strip())
+            if ' SENM' in line:
+                senescence_month.add(line[7:10].strip())
+            if ' LAST' in line:
+                last_month.add(line[7:10].strip())
+    with open(TEMPLATE_SCH, 'r') as hist_sch:
+        for line in hist_sch:
+            if ' CROP' in line:
+                crop_line = next(hist_sch)
+                crop_list.add(crop_line[:10].strip())
+            if ' FRST' in line:
+                first_month.add(line[7:10].strip())
+            if ' SENM' in line:
+                senescence_month.add(line[7:10].strip())
+            if ' LAST' in line:
+                last_month.add(line[7:10].strip())
+    # ensure that crop (e.g. GCD_G) is same between hist and extend schedule
+    assert len(crop_list) == 1, "We can only handle one PFT for old model"
+    # ensure that the file contains only one schedule to begin and end
+    # growth
+    assert len(first_month) == 1, "More than one starting month found"
+    assert len(last_month) == 1, "More than one ending month found"
+    PFT_label = list(crop_list)[0]
+
+    # collect parameters from all Century sources
+    master_param_dict = {}
+    # get crop parameters from crop.100 file in CENTURY_DIR
+    with open(crop_params, 'r') as cparam:
+        for line in cparam:
+            if line.startswith('{} '.format(PFT_label)):
+                while 'MXDDHRV' not in line:
+                    label = re.sub(r"\'", "", line[13:].strip()).lower()
+                    if label in parameters_to_keep:
+                        value = float(line[:13].strip())
+                        master_param_dict[label] = value
+                    line = next(cparam)
+                label = re.sub(r"\'", "", line[13:].strip()).lower()
+                if label in parameters_to_keep:
+                    value = float(line[:13].strip())
+                    master_param_dict[label] = value
+    # get grazing effect parameters from graz.100 file
+    graz_file = os.path.join(CENTURY_DIR, 'graz.100')
+    with open(graz_file, 'r') as grazparams:
+        for line in grazparams:
+            if line.startswith(new_model_args['template_level']):
+                line = next(grazparams)
+                while 'FECLIG' not in line:
+                    label = re.sub(r"\'", "", line[13:].strip()).lower()
+                    if label in parameters_to_keep:
+                        value = float(line[:13].strip())
+                        master_param_dict[label] = value
+                    line = next(grazparams)
+                label = re.sub(r"\'", "", line[13:].strip()).lower()
+                if label in parameters_to_keep:
+                    value = float(line[:13].strip())
+                    master_param_dict[label] = value
+    # get site parameters from TEMPLATE_100
+    with open(TEMPLATE_100, 'r') as siteparam:
+        for line in siteparam:
+            label = re.sub(r"\'", "", line[13:].strip()).lower()
+            if label in parameters_to_keep:
+                value = float(line[:13].strip())
+                master_param_dict[label] = value
+    # get fixed parameters from new_model_args['fix_file']
+    with open(new_model_args['fix_file'], 'r') as siteparam:
+        for line in siteparam:
+            label = re.sub(r"\'", "", line[13:].strip()).lower()
+            if label in parameters_to_keep:
+                value = float(line[:13].strip())
+                master_param_dict[label] = value
+
+    def century_to_rp(century_label):
+        """Convert Century name to rangeland production name."""
+        rp = re.sub(r"\(", "_", century_label)
+        rp = re.sub(r",", "_", rp)
+        rp = re.sub(r"\)", "", rp)
+        return rp
+
+    # apportion parameters to PFT and site tables
+    PFT_param_dict = {'PFT': 1}
+    pft_params = parameter_table[
+        parameter_table['Property of'] == 'PFT']['Century parameter name']
+    for label in pft_params:
+        PFT_param_dict[label] = master_param_dict[label]
+    site_param_dict = {'site': 1}
+    site_params = parameter_table[
+        parameter_table['Property of'] == 'site']['Century parameter name']
+    for label in site_params:
+        site_param_dict[label] = master_param_dict[label]
+    animal_param_dict = {'animal_id': 1}
+    animal_params = parameter_table[
+        parameter_table['Property of'] == 'animal']['Century parameter name']
+    for label in animal_params:
+        animal_param_dict[label] = master_param_dict[label]
+
+    # add to grass csv to make PFT trait table
+    PFT_param_dict['growth_months'] = (
+        [','.join([str(m) for m in range(
+            int(list(first_month)[0]), int(list(last_month)[0]) + 1)])])
+    if senescence_month:
+        PFT_param_dict['senescence_month'] = (
+            ','.join([str(m) for m in list(senescence_month)]))
+    if new_model_args['grass_type'] == 'C3':
+        PFT_param_dict['species_factor'] = 0
+    else:
+        PFT_param_dict['species_factor'] = 0.16
+    pft_df = pandas.DataFrame(PFT_param_dict, index=[0])
+    col_rename_dict = {c: century_to_rp(c) for c in pft_df.columns.values}
+    pft_df.rename(index=int, columns=col_rename_dict, inplace=True)
+    pft_df.to_csv(pft_param_path, index=False)
+    # TODO: add new PFT parameters:
+    #   digestibility_slope
+    #   digestibility_intercept
+
+    # add to herbivore csv to make animal parameter table
+    animal_beta_df = pandas.read_csv(new_model_args['herbivore_csv'])
+    animal_df = pandas.DataFrame(animal_param_dict, index=[0])
+    col_rename_dict = {c: century_to_rp(c) for c in animal_df.columns.values}
+    animal_df.rename(index=int, columns=col_rename_dict, inplace=True)
+    merged_animal_df = pandas.concat(
+        [animal_beta_df, animal_df], axis=1, sort=False)
+    merged_animal_df.to_csv(animal_param_path, index=False)
+    # TODO: add parameter 'grzeff'
+
+    # make site parameter table
+    site_df = pandas.DataFrame(site_param_dict, index=[0])
+    col_rename_dict = {c: century_to_rp(c) for c in site_df.columns.values}
+    site_df.rename(index=int, columns=col_rename_dict, inplace=True)
+    site_df.to_csv(site_param_path, index=False)
+
+
 def wcs_monitoring_points_workflow():
     """Run Century to get initialization rasters for WCS monitoring area."""
-    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/soil/monitoring_points_soil_isric_250m.csv"
-    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/chirps_prec_back_calc"
-    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/monitoring_sites/chirps_prec_back_calc_2.13.20"
-    launch_sites(site_csv, input_dir, outer_outdir)
+    # site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/soil/monitoring_points_soil_isric_250m.csv"
+    # input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/chirps_prec_back_calc"
+    # outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/monitoring_sites/chirps_prec_back_calc_2.13.20"
+    # # launch_sites(site_csv, input_dir, outer_outdir)
+    # year = 2016
+    # month = 8
+    # site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/site_idx_CBM_SCP_voronoi_polygon.tif"
+    # initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/initial_conditions"
+    # century_outputs_to_rpm_initial_rasters(
+    #     site_csv, outer_outdir, year, month, site_index_path,
+    #     initial_conditions_dir)
+    # start_time = 2015.08
+    # end_time = 2018.00
+    # save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
+    # summarize_century_biomass(
+    #     site_csv, outer_outdir, start_time, end_time, save_as)
+    # initialization for scenarios in monitoring area
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/intermediate_data/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/monitoring_sites/worldclim_historical_sch"
+    launch_sites(site_csv, 'site_id', input_dir, outer_outdir)
     year = 2016
-    month = 8
+    month = 12
     site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/site_idx_CBM_SCP_voronoi_polygon.tif"
-    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/RPM_initialized_from_Century/initial_conditions"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/SCP_sites/worldclim_historical_sch/RPM_inputs/initial_conditions"
     century_outputs_to_rpm_initial_rasters(
-        site_csv, outer_outdir, year, month, site_index_path,
-        initial_conditions_dir)
-    start_time = 2015.08
-    end_time = 2018.00
-    save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
-    summarize_century_biomass(
-        site_csv, outer_outdir, start_time, end_time, save_as)
+        site_csv, 'site_id', outer_outdir, year, month, site_index_path,
+        initial_conditions_dir, 'site_id_num')
 
 
 def julian_ahlborn_sites_workflow():
     """Run Century to get initialization rasters for Julian Ahlborn's sites."""
     site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
-    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs"
-    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs_Aug2020"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs_Aug2020"
     # launch_sites(site_csv, 'site', input_dir, outer_outdir)
     start_time = 2014.08
     end_time = 2015.00
+    save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
+    # summarize_century_biomass(
+        # site_csv, 'site', outer_outdir, start_time, end_time, save_as)
+    year = 2011
+    month = 8
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/site_index.tif"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/initial_conditions_Aug20"
+    # century_outputs_to_rpm_initial_rasters(
+    #     site_csv, 'site', outer_outdir, year, month, site_index_path,
+    #     initial_conditions_dir)
+    # Nov 2020, collect biomass at site centroids with no grazing
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_inputs_Aug2020/no_grazing_last_year"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs_Aug2020/no_grazing_last_year"
+    launch_sites(site_csv, 'site', input_dir, outer_outdir)
+    start_time = 2015.08
+    end_time = 2016.00
     save_as = os.path.join(outer_outdir, 'biomass_summary.csv')
     summarize_century_biomass(
         site_csv, 'site', outer_outdir, start_time, end_time, save_as)
 
 
+def n_content_experiment():
+    """Run Century at one of Julian Ahlborn's sites, experimenting with
+    parameters controlling N content of new production."""
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil_site15.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites_n_content_exp/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites_n_content_exp/Century_outputs"
+    launch_sites(site_csv, 'site', input_dir, outer_outdir)
+    # calculate crude protein content
+    min_time = 2016.00
+    max_time = 2017.00
+    century_output_file = os.path.join(outer_outdir, '15', '15.lis')
+    cent_df = pandas.read_fwf(century_output_file, skiprows=[1])
+    cent_df = cent_df[(cent_df.time >= min_time) & (cent_df.time <= max_time)]
+    cp_aglivc = (cent_df['aglive(1)'] * 6.25) / (cent_df['aglivc'] * 2.5)
+    print(cp_aglivc)
+    print('\nmean cp: {}'.format(cp_aglivc.mean()))
+    print(cent_df['aglivc'])
+    print('\nmean aglivc: {}'.format(cent_df['aglivc'].mean()))
+    shutil.rmtree("C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites_n_content_exp/Century_outputs/15")
+
+
+def eastern_steppe_initial_tables():
+    century_output_file = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs_Aug2020/12/12.lis"
+    year = 2014
+    month = 12
+    site_initial_table = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/site_initial_table.csv"
+    pft_initial_table = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/pft_initial_table.csv"
+    century_outputs_to_initial_tables(
+        century_output_file, year, month, site_initial_table,
+        pft_initial_table)
+
+
+def ahlborn_scenario_initial_rasters():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs_Aug2020"
+    year = 2011
+    month = 12
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/site_index.tif"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/initial_conditions_scenarios"
+    century_outputs_to_rpm_initial_rasters(
+        site_csv, 'site', outer_outdir, year, month, site_index_path,
+        initial_conditions_dir)
+
+def laikipia_scenario_initial_rasters():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_outputs"
+    # launch_sites(
+    #     site_csv, 'id', input_dir, outer_outdir, fix_file='drytrpfi.100')
+    year = 2013
+    month = 12
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/voronoi_polygons_regular_grid.tif"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/initial_conditions"
+    # century_outputs_to_rpm_initial_rasters(
+    #     site_csv, 'id', outer_outdir, year, month, site_index_path,
+    #     initial_conditions_dir)
+    pft_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/pft_parameter_table.csv"
+    animal_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/animal_parameter_table.csv"
+    site_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/site_parameter_table.csv"
+    century_params_to_new_model_params(
+        pft_param_path, animal_param_path, site_param_path)
+
+def OPC_initial_rasters():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/Century_outputs"
+    # launch_sites(
+    #     site_csv, 'id', input_dir, outer_outdir, fix_file='drytrpfi.100')
+    year = 2013
+    month = 12
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/voronoi_polygons_regular_grid.tif"
+    initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/RPM_inputs/initial_conditions"
+    century_outputs_to_rpm_initial_rasters(
+        site_csv, 'id', outer_outdir, year, month, site_index_path,
+        initial_conditions_dir)
+    pft_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/RPM_inputs/pft_parameter_table.csv"
+    animal_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/RPM_inputs/animal_parameter_table.csv"
+    site_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/RPM_inputs/site_parameter_table.csv"
+    century_params_to_new_model_params(
+        pft_param_path, animal_param_path, site_param_path)
+
+
+def eastern_steppe_regular_grid_initial_rasters():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/Century_outputs"
+    # launch_sites(site_csv, 'id', input_dir, outer_outdir)
+    # year = 2011
+    # month = 12
+    # site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/site_index.tif"
+    # initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/initial_conditions"
+    # century_outputs_to_rpm_initial_rasters(
+    #     site_csv, 'id', outer_outdir, year, month, site_index_path,
+    #     initial_conditions_dir)
+    year = 2011
+    month = 18
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/site_index.tif"
+    initial_conditions_dir = "C:/Users/ginge/Desktop/Century_Worldclim"
+    century_outputs_to_rpm_initial_rasters(
+        site_csv, 'id', outer_outdir, year, month, site_index_path,
+        initial_conditions_dir)
+
+
+def eastern_steppe_regular_grid_future_climate():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/Century_inputs_CanESM5"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/Century_outputs_CanESM5"
+    # launch_sites(site_csv, 'id', input_dir, outer_outdir)
+    # year = 2011
+    # month = 12
+    # site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/site_index.tif"
+    # initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/initial_conditions_CanESM5"
+    # century_outputs_to_rpm_initial_rasters(
+    #     site_csv, 'id', outer_outdir, year, month, site_index_path,
+    #     initial_conditions_dir)
+    year = 2011
+    month = 8
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/site_index.tif"
+    initial_conditions_dir = "C:/Users/ginge/Desktop/Century_CanESM5"
+    century_outputs_to_rpm_initial_rasters(
+        site_csv, 'id', outer_outdir, year, month, site_index_path,
+        initial_conditions_dir)
+
+
+def Century_time_series():
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/time_series_points/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/time_series_points/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/time_series_points/Century_outputs_CanESM5"
+    launch_sites(site_csv, 'id', input_dir, outer_outdir)\
+
+
 def main():
     """Program entry point."""
-    julian_ahlborn_sites_workflow()
+    # julian_ahlborn_sites_workflow()
+    # wcs_monitoring_points_workflow()
+    # eastern_steppe_initial_tables()
+    # n_content_experiment()
+    # ahlborn_scenario_initial_rasters()
+    # laikipia_scenario_initial_rasters()
+    # OPC_initial_rasters()
+    # eastern_steppe_regular_grid_initial_rasters()
+    # eastern_steppe_regular_grid_future_climate()
+    Century_time_series()
 
 
 if __name__ == "__main__":

@@ -10,9 +10,9 @@ from tempfile import mkstemp
 import pandas as pd
 import numpy as np
 from datetime import datetime
-import back_calculate_management as backcalc
-sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production")
-import forage_century_link_utils as cent
+sys.path.append("C:/Users/ginge/Documents/Python/rangeland_production_11_26_18")
+# import back_calculate_management as backcalc
+# import forage_century_link_utils as cent
 import forage
 
 
@@ -464,6 +464,33 @@ def rainfall_perturbations_experiment():
     marg_df.to_csv(os.path.join(outer_outdir, 'energy_balance_summary.csv'))
 
 
+def Laikipia_uniform_density():
+    """Launch the beta model to mimic RPM."""
+    template_herb_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/herd_avg_uncalibrated.csv"
+    template_grass_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/CENTURY4.6/Kenya/input/regional_properties/Worldclim_precip/empty_2014_2015/0.csv"
+    grass_df = pd.read_csv(template_grass_csv)
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/soil.csv"
+    site_list = pd.read_csv(site_csv).to_dict(orient="records")
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_results/regional_properties/uniform_density_9.17.2020"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_inputs"
+    forage_args = default_forage_args()
+    forage_args['input_dir'] = input_dir
+    forage_args['herbivore_csv'] = template_herb_csv
+    forage_args['template_level'] = 'GL'
+    # target = 0.14734  # this is already in the grass_csv
+    for site in site_list[:5]:
+        grass_df.at[0, 'label'] = '{:d}'.format(int(site['id']))
+        temp_grass_csv_path = 'C:/Users/ginge/Desktop/{:d}.csv'.format(
+            int(site['id']))
+        grass_df.to_csv(temp_grass_csv_path)
+        outdir = os.path.join(outer_outdir, 'site_{}'.format(int(site['id'])))
+        forage_args['grass_csv'] = temp_grass_csv_path
+        forage_args['latitude'] = site['latitude']
+        forage_args['outdir'] = outdir
+        forage.execute(forage_args)
+        os.remove(temp_grass_csv_path)
+
+
 def Kenya_MS_regional_productivity():
     """Run the forage model at constant stocking density.
 
@@ -617,8 +644,8 @@ def run_preset_densities():
     df.to_csv(summary_csv)
     erase_intermediate_files(outer_outdir)
     if len(failed) > 0:
-        print "the following sites failed:"
-        print failed
+        print("the following sites failed:")
+        print(failed)
 
 def erase_intermediate_files(outerdir):
     for folder in os.listdir(outerdir):
@@ -1469,5 +1496,5 @@ def scenario_workflow():
 
 if __name__ == "__main__":
     # combine_marg_df()
-    max_viable_density_rainfall_perturbations()
-
+    # max_viable_density_rainfall_perturbations()
+    Laikipia_uniform_density()
