@@ -852,54 +852,223 @@ def gobi_scenarios():
         forage.execute(rpm_args)
 
 
-def Ahlborn_scenarios():
-    baseline_precip_dir = "E:/GIS_local/Mongolia/Worldclim/Worldclim_baseline"
-    high_precip_dir = "E:/GIS_local/Mongolia/Worldclim/Worldclim_multiplied_by_1.6"
-    low_precip_dir = "E:/GIS_local/Mongolia/Worldclim/Worldclim_multiplied_by_0.4"
+def mask_and_perturb(
+        base_raster_path_band, mask_vector_path, target_mask_raster_path,
+        perc_change, multiplier=None):
+    """Mask a raster band with a given vector and perturb by percent change.
 
-    # resampled to lower resolution
+    This was copied from pygeoprocessing.mask_raster() except that the masked
+    raster may also be multiplied by a constant value. If a multiplier is
+    supplied, the data type of the target raster is float; if not, it is the
+    same as the datatype of the input raster.
+
+    Args:
+        base_raster_path_band (tuple): a (path, band number) tuple indicating
+            the data to mask.
+        mask_vector_path (path): path to a vector that will be used to mask
+            anything outside of the polygon that overlaps with
+            ``base_raster_path_band`` to ``target_mask_value`` if defined or
+            else ``base_raster_path_band``'s nodata value.
+        target_mask_raster_path (str): path to desired target raster that
+            is a copy of ``base_raster_path_band`` except any pixels that do
+            not intersect with ``mask_vector_path`` are set to
+            ``target_mask_value`` or ``base_raster_path_band``'s nodata value
+            if ``target_mask_value`` is None.
+        perc_change (float): percent change that should be applied to the
+            masked raster
+        multiplier (float or int): if supplied, the masked raster is multiplied
+            by this value before being perturbed by percent change. For
+            example, to convert between units.
+
+    Returns:
+        None
+
+    """
+    DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS = ('GTIFF', (
+        'TILED=YES', 'BIGTIFF=YES', 'COMPRESS=LZW',
+        'BLOCKXSIZE=256', 'BLOCKYSIZE=256'))
+    with tempfile.NamedTemporaryFile(
+            prefix='mask_raster', delete=False,
+            suffix='.tif') as mask_raster_file:
+        mask_raster_path = mask_raster_file.name
+
+    pygeoprocessing.new_raster_from_base(
+        base_raster_path_band[0], mask_raster_path, gdal.GDT_Byte, [255],
+        fill_value_list=[0],
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS)
+
+    base_raster_info = pygeoprocessing.get_raster_info(
+        base_raster_path_band[0])
+    base_nodata = base_raster_info['nodata'][base_raster_path_band[1]-1]
+
+    pygeoprocessing.rasterize(
+        mask_vector_path, mask_raster_path, burn_values=[1],
+        layer_id=0, option_list=[('ALL_TOUCHED=FALSE')])
+
+    def mask_op(base_array, mask_array, perc_change, multiplier):
+        valid_mask = (~numpy.isclose(base_array, base_nodata))
+        converted = numpy.copy(base_array) * multiplier
+        result = numpy.empty(base_array.shape, dtype=numpy.float32)
+        result[:] = base_nodata
+        result[valid_mask] = (
+            converted[valid_mask] + abs(converted[valid_mask]) * perc_change)
+        result[mask_array == 0] = base_nodata
+        return result
+
+    if multiplier is None:
+        multiplier = 1
+        target_datatype = base_raster_info['datatype']
+    else:
+        target_datatype = gdal.GDT_Float32
+
+    pygeoprocessing.raster_calculator(
+        [base_raster_path_band, (mask_raster_path, 1), (perc_change, 'raw'),
+        (multiplier, 'raw')],
+        mask_op, target_mask_raster_path, target_datatype, base_nodata,
+        raster_driver_creation_tuple=DEFAULT_GTIFF_CREATION_TUPLE_OPTIONS)
+
+    os.remove(mask_raster_path)
+
+
+def Ahlborn_scenarios():
+    outer_aoi_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/sampling_points_aoi.shp"
+    worldclim_precip_dir = "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip"
+    baseline_tmin_dir = "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min"
+    baseline_tmax_dir = "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max"
+
+    # multiplier to convert Worldclim precip (mm) to cm
+    precip_multiplier = 0.1
+
+    # percent change in precip, tmin, tmax derived from future GCM scenarios
+    # 1.0 = 100%
+    precip_perc_change = 0.22
+    tmin_perc_change = 1.72
+    tmax_perc_change = 0.71
+
+    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Ahlborn_scenarios/Dec102020"
+
+    # create temporary climate directories, perturb climate inputs by constant
+    if not os.path.exists(outer_dir):
+        os.makedirs(outer_dir)
+    # temp_dir = tempfile.mkdtemp(dir=outer_dir)
+    temp_dir = os.path.join(outer_dir, 'tmpdqf19rxa')
+    baseline_precip_dir = os.path.join(temp_dir, 'precip_baseline')
+    elevated_precip_dir = os.path.join(temp_dir, 'precip_elevated')
+    elevated_tmin_dir = os.path.join(temp_dir, 'tmin_elevated')
+    elevated_tmax_dir = os.path.join(temp_dir, 'tmax_elevated')
+    # os.makedirs(baseline_precip_dir)
+    # os.makedirs(elevated_precip_dir)
+    # os.makedirs(elevated_tmin_dir)
+    # os.makedirs(elevated_tmax_dir)
+
+    for m in range(1, 13):
+        input_precip_path = os.path.join(
+            worldclim_precip_dir, 'wc2.0_30s_prec_{:02}.tif'.format(m))
+        baseline_precip_path = os.path.join(
+            baseline_precip_dir, 'precip_2016_{}.tif'.format(m))
+        mask_and_perturb(
+            (input_precip_path, 1), outer_aoi_path, baseline_precip_path,
+            perc_change=0, multiplier=precip_multiplier)
+        shutil.copyfile(
+            baseline_precip_path,
+            os.path.join(baseline_precip_dir, 'precip_2017_{}.tif'.format(m)))
+
+        elevated_precip_path = os.path.join(
+            elevated_precip_dir, 'precip_2016_{}.tif'.format(m))
+        mask_and_perturb(
+            (input_precip_path, 1), outer_aoi_path, elevated_precip_path,
+            perc_change=precip_perc_change, multiplier=precip_multiplier)
+        shutil.copyfile(
+            elevated_precip_path,
+            os.path.join(elevated_precip_dir, 'precip_2017_{}.tif'.format(m)))
+
+        input_tmin_path = os.path.join(
+            baseline_tmin_dir, 'wc2.0_30s_tmin_{}.tif'.format(m))
+        elevated_tmin_path = os.path.join(
+            elevated_tmin_dir, 'tmin_{}.tif'.format(m))
+        mask_and_perturb(
+            (input_tmin_path, 1), outer_aoi_path, elevated_tmin_path,
+            perc_change=tmin_perc_change)
+
+        input_tmax_path = os.path.join(
+            baseline_tmax_dir, 'wc2.0_30s_tmax_{}.tif'.format(m))
+        elevated_tmax_path = os.path.join(
+            elevated_tmax_dir, 'tmax_{}.tif'.format(m))
+        mask_and_perturb(
+            (input_tmax_path, 1), outer_aoi_path, elevated_tmax_path,
+            perc_change=tmax_perc_change)
+
     baseline_animal_density = "C:/Users/ginge/Desktop/sfu_lowres/sfu_per_ha_est.tif"
-    high_animal_density = "C:/Users/ginge/Desktop/sfu_lowres/sfu_per_ha_est_doubled.tif"
+    elevated_animal_density = "C:/Users/ginge/Desktop/sfu_lowres/sfu_per_ha_est_doubled.tif"
     zero_animal_density = "C:/Users/ginge/Desktop/sfu_lowres/zero_animals.tif"
     scenarios_dict = {
-        'A': {
-            'precip_dir': baseline_precip_dir,
-            'animal_density_path': baseline_animal_density,
-        },
         'B': {
-            'precip_dir': high_precip_dir,
+            'precip_dir': baseline_precip_dir,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
             'animal_density_path': baseline_animal_density,
         },
         'C': {
-            'precip_dir': low_precip_dir,
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
             'animal_density_path': baseline_animal_density,
         },
         'D': {
             'precip_dir': baseline_precip_dir,
-            'animal_density_path': high_animal_density,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
+            'animal_density_path': elevated_animal_density,
+        },
+        'E': {
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
+            'animal_density_path': elevated_animal_density,
         },
         'F': {
-            'precip_dir': baseline_precip_dir,
-            'animal_density_path': zero_animal_density,
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': baseline_tmin_dir,
+            'tmax_dir': baseline_tmax_dir,
+            'animal_density_path': baseline_animal_density,
         },
         'G': {
-            'precip_dir': high_precip_dir,
-            'animal_density_path': high_animal_density,
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': baseline_tmin_dir,
+            'tmax_dir': baseline_tmax_dir,
+            'animal_density_path': elevated_animal_density,
+        },
+        'H': {
+            'precip_dir': baseline_precip_dir,
+            'tmin_dir': baseline_tmin_dir,
+            'tmax_dir': baseline_tmax_dir,
+            'animal_density_path': elevated_animal_density,
         },
         'I': {
-            'precip_dir': high_precip_dir,
+            'precip_dir': baseline_precip_dir,
+            'tmin_dir': baseline_tmin_dir,
+            'tmax_dir': baseline_tmax_dir,
             'animal_density_path': zero_animal_density,
         },
         'J': {
-            'precip_dir': low_precip_dir,
-            'animal_density_path': high_animal_density,
+            'precip_dir': baseline_precip_dir,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
+            'animal_density_path': zero_animal_density,
+        },
+        'K': {
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': elevated_tmin_dir,
+            'tmax_dir': elevated_tmax_dir,
+            'animal_density_path': zero_animal_density,
         },
         'L': {
-            'precip_dir': low_precip_dir,
+            'precip_dir': elevated_precip_dir,
+            'tmin_dir': baseline_tmin_dir,
+            'tmax_dir': baseline_tmax_dir,
             'animal_density_path': zero_animal_density,
         },
     }
-    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Ahlborn_scenarios/Nov62020"
     aoi_pattern = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/RPM_inputs/site_centroid_buffer_sfu/aoi_<idx>.shp"
     for aoi_idx in range(1, 16):
         for scenario in scenarios_dict:
@@ -909,13 +1078,23 @@ def Ahlborn_scenarios():
                 os.makedirs(workspace_dir)
                 rpm_args = ahlborn_scenario_args(workspace_dir)
                 aoi_path = aoi_pattern.replace('<idx>', str(aoi_idx))
-                rpm_args['n_months'] = 12
+                rpm_args['n_months'] = 24
                 rpm_args['aoi_path'] = aoi_path
                 rpm_args['precip_dir'] = scenarios_dict[
                     scenario]['precip_dir']
+                rpm_args['min_temp_dir'] = scenarios_dict[
+                    scenario]['tmin_dir']
+                rpm_args['max_temp_dir'] = scenarios_dict[
+                    scenario]['tmax_dir']
                 rpm_args['animal_density'] = scenarios_dict[
                     scenario]['animal_density_path']
                 forage.execute(rpm_args)
+
+    # clean up
+    # shutil.rmtree(baseline_precip_dir)
+    # shutil.rmtree(elevated_precip_dir)
+    # shutil.rmtree(elevated_tmin_dir)
+    # shutil.rmtree(elevated_tmax_dir)
 
 
 def summarize_outputs_at_OPC_transects(workspace_dir):
@@ -1424,13 +1603,13 @@ def main():
     # ahlborn_sites_workflow()
     # ahlborn_sites_collect_precip()
     # gobi_scenarios()
-    # Ahlborn_scenarios()
+    Ahlborn_scenarios()
     # Laikipia_scenarios()
     # Laikipia_NDVI_test()
     # launch_RPM_OPC()
     # Ahlborn_zerosd_biomass_vs_Century()
-    eastern_steppe_future_climate()
-    eastern_steppe_current_climate()
+    # eastern_steppe_future_climate()
+    # eastern_steppe_current_climate()
 
 
 if __name__ == "__main__":
