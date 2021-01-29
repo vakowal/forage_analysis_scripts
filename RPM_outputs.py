@@ -156,14 +156,16 @@ def summarize_pixel_distribution(raster_path):
             'mean': statistics.mean(value_list),
             'median': statistics.median(value_list),
             'stdev': statistics.stdev(value_list),
-            'range': (max(value_list) - min(value_list)),
+            'min': min(value_list),
+            'max': max(value_list),
         }
     else:
         summary_dict = {
             'mean': 'NA',
             'median': 'NA',
             'stdev': 'NA',
-            'range': 'NA',
+            'min': 'NA',
+            'max': 'NA',
         }
     return summary_dict
 
@@ -340,130 +342,148 @@ def delete_intermediate_rasters(base_data):
     for run_id in base_data['run_list']:
         for output_bn in base_data['output_list']:
             for year in base_data['year_list']:
-                target_path = os.path.join(
+                yearly_mean_path = os.path.join(
                     base_data['summary_output_dir'],
-                    'minimum_{}_{}_{}.tif'.format(output_bn, year, run_id))
-                os.remove(target_path)
-                target_path = os.path.join(
+                    'yearly_mean_{}_{}_{}.tif'.format(output_bn, year, run_id))
+                os.remove(yearly_mean_path)
+                perc_change_path = os.path.join(
                     base_data['summary_output_dir'],
-                    'maximum_{}_{}_{}.tif'.format(output_bn, year, run_id))
-                os.remove(target_path)
-                target_path = os.path.join(
-                    base_data['summary_output_dir'],
-                    'cumulative_{}_growing_season_{}_{}.tif'.format(
+                    'perc_change_yearly_mean_{}_{}_{}.tif'.format(
                         output_bn, year, run_id))
-                os.remove(target_path)
+                if run_id != 'A':
+                    os.remove(perc_change_path)
 
 
 def summarize_outputs(base_data):
     """Summarize outputs from runs of RPM."""
-    growing_season_month_list = range(4, 10)  # months in the growing season
-    yearly_summary_dict = {
+    def perc_change(baseline_ar, scenario_ar):
+        """Calculate percent change from baseline."""
+        valid_mask = (
+            (~numpy.isclose(baseline_ar, input_nodata)) &
+            (~numpy.isclose(scenario_ar, input_nodata)))
+        result = numpy.empty(baseline_ar.shape, dtype=numpy.float32)
+        result[:] = input_nodata
+        result[valid_mask] = (
+            (scenario_ar[valid_mask] - baseline_ar[valid_mask]) /
+            baseline_ar[valid_mask] * 100)
+        return result
+
+    mean_val_dict = {
         'run_id': [],
         'output': [],
         'year': [],
+        'pixel_mean': [],
+    }
+
+    diet_sufficiency_summary_dict = {
+        'run_id': [],
+        'year': [],
+        'month': [],
         'aggregation_method': [],
-        'value': [],
+        'pixel_mean': [],
+    }
+
+    perc_change_summary_dict = {
+        'run_id': [],
+        'output': [],
+        'year': [],
+        'mean_perc_change': [],
+        'min_perc_change': [],
+        'max_perc_change': [],
     }
     for run_id in base_data['run_list']:
         run_output_dir = os.path.join(
             base_data['outer_dir'], run_id, 'output')
         for output_bn in base_data['output_list']:
             for year in base_data['year_list']:
-                months_in_year_list = range(1, 13)
-                # if year in [2017, 2018]:
-                #     months_in_year_list = range(1, 13)
-                # else:
-                #     months_in_year_list = range(1, 12)  # 2019 only includes 1-11
-                # average yearly value across pixels
                 year_raster_list = [
                     os.path.join(run_output_dir, '{}_{}_{}.tif').format(
-                        output_bn, year, month) for month in
-                    months_in_year_list]
-                mean_val = average_value_in_aoi(
-                    year_raster_list, base_data['aoi_path'])
-                yearly_summary_dict['run_id'].append(run_id)
-                yearly_summary_dict['output'].append(output_bn)
-                yearly_summary_dict['year'].append(year)
-                yearly_summary_dict['aggregation_method'].append(
-                    'yearly_average_across_pixels_across_months')
-                yearly_summary_dict['value'].append(mean_val)
-
-                # minimum value for each pixel across months of the year
-                target_path = os.path.join(
-                    base_data['summary_output_dir'],
-                    'minimum_{}_{}_{}.tif'.format(output_bn, year, run_id))
-                min_value_per_pixel(year_raster_list, target_path)
-
-                # maximum value for each pixel across months of the year
-                target_path = os.path.join(
-                    base_data['summary_output_dir'],
-                    'maximum_{}_{}_{}.tif'.format(output_bn, year, run_id))
-                max_value_per_pixel(year_raster_list, target_path)
-
-                # average value across pixels, growing season only
-
-                # cumulative value per pixel during growing season
-                season_raster_list = [
-                    os.path.join(run_output_dir, '{}_{}_{}.tif').format(
-                        output_bn, year, month) for month in
-                    growing_season_month_list]
+                        output_bn, year, month) for month in range(1, 13)]
                 input_nodata = pygeoprocessing.get_raster_info(
-                    season_raster_list[0])['nodata'][0]
-                target_path = os.path.join(
+                    year_raster_list[0])['nodata'][0]
+                yearly_mean_path = os.path.join(
                     base_data['summary_output_dir'],
-                    'cumulative_{}_growing_season_{}_{}.tif'.format(
-                        output_bn, year, run_id))
-                raster_list_sum(
-                    season_raster_list, input_nodata, target_path,
-                    input_nodata, nodata_remove=True)
+                    'yearly_mean_{}_{}_{}.tif'.format(output_bn, year, run_id))
+                raster_list_mean(
+                    year_raster_list, input_nodata, yearly_mean_path,
+                    input_nodata)
 
-                # average cumulative value across pixels within growing season
+                # descriptive statistics: monthly average across pixels
+                stat_df = summarize_pixel_distribution(yearly_mean_path)
+                mean_val_dict['run_id'].append(run_id)
+                mean_val_dict['output'].append(output_bn)
+                mean_val_dict['year'].append(year)
+                mean_val_dict['pixel_mean'].append(stat_df['mean'])
+
+        # number of months where average diet sufficiency across aoi was > 1
+        for year in base_data['year_list']:
+            for month in range(1, 13):
+                output_path = os.path.join(
+                    run_output_dir, 'diet_sufficiency_{}_{}.tif').format(
+                        year, month)
                 zonal_stat_dict = pygeoprocessing.zonal_statistics(
-                    (target_path, 1), base_data['aoi_path'])
+                    (output_path, 1), base_data['aoi_path'])
                 try:
-                    mean_val = (
-                        zonal_stat_dict[0]['sum'] /
+                    mean_value = (
+                        float(zonal_stat_dict[0]['sum']) /
                         zonal_stat_dict[0]['count'])
                 except ZeroDivisionError:
-                    mean_val = 0
-                yearly_summary_dict['run_id'].append(run_id)
-                yearly_summary_dict['output'].append(output_bn)
-                yearly_summary_dict['year'].append(year)
-                yearly_summary_dict['aggregation_method'].append(
-                    'growing_season_sum_average_across_pixels')
-                yearly_summary_dict['value'].append(mean_val)
+                    mean_value = 'NA'
+                diet_sufficiency_summary_dict['run_id'].append(run_id)
+                diet_sufficiency_summary_dict['year'].append(year)
+                diet_sufficiency_summary_dict['month'].append(month)
+                diet_sufficiency_summary_dict['aggregation_method'].append(
+                    'average_across_pixels')
+                diet_sufficiency_summary_dict['pixel_mean'].append(mean_value)
 
-                # descriptive statistics: distribution of cumulative values
-                #   across pixels
-                stat_df = summarize_pixel_distribution(target_path)
-                yearly_summary_dict['run_id'].append(run_id)
-                yearly_summary_dict['output'].append(output_bn)
-                yearly_summary_dict['year'].append(year)
-                yearly_summary_dict['aggregation_method'].append(
-                    'growing_season_sum_median_across_pixels')
-                yearly_summary_dict['value'].append(stat_df['median'])
+    # summarize percent change from baseline
+    for run_id in base_data['run_list']:
+        if run_id == 'A':
+            continue
+        run_output_dir = os.path.join(
+            base_data['outer_dir'], run_id, 'output')
+        for output_bn in base_data['output_list']:
+            for year in base_data['year_list']:
+                baseline_path = os.path.join(
+                    base_data['summary_output_dir'],
+                    'yearly_mean_{}_{}_A.tif'.format(output_bn, year))
+                scenario_path = os.path.join(
+                    base_data['summary_output_dir'],
+                    'yearly_mean_{}_{}_{}.tif'.format(output_bn, year, run_id))
+                perc_change_path = os.path.join(
+                    base_data['summary_output_dir'],
+                    'perc_change_yearly_mean_{}_{}_{}.tif'.format(
+                        output_bn, year, run_id))
+                pygeoprocessing.raster_calculator(
+                    [(path, 1) for path in [baseline_path, scenario_path]],
+                    perc_change, perc_change_path, gdal.GDT_Float32,
+                    input_nodata)
+                # descriptive statistics: monthly average across pixels
+                stat_df = summarize_pixel_distribution(perc_change_path)
+                perc_change_summary_dict['run_id'].append(run_id)
+                perc_change_summary_dict['output'].append(output_bn)
+                perc_change_summary_dict['year'].append(year)
+                perc_change_summary_dict['mean_perc_change'].append(
+                    stat_df['mean'])
+                perc_change_summary_dict['min_perc_change'].append(
+                    stat_df['min'])
+                perc_change_summary_dict['max_perc_change'].append(
+                    stat_df['max'])
 
-                yearly_summary_dict['run_id'].append(run_id)
-                yearly_summary_dict['output'].append(output_bn)
-                yearly_summary_dict['year'].append(year)
-                yearly_summary_dict['aggregation_method'].append(
-                    'growing_season_sum_stdev_across_pixels')
-                yearly_summary_dict['value'].append(stat_df['stdev'])
-
-                yearly_summary_dict['run_id'].append(run_id)
-                yearly_summary_dict['output'].append(output_bn)
-                yearly_summary_dict['year'].append(year)
-                yearly_summary_dict['aggregation_method'].append(
-                    'growing_season_sum_range_across_pixels')
-                yearly_summary_dict['value'].append(stat_df['range'])
-
-                # summaries of distribution of average values across pixels?
-
-    summary_df = pandas.DataFrame(yearly_summary_dict)
+    summary_df = pandas.DataFrame(mean_val_dict)
     save_as = os.path.join(
         base_data['summary_output_dir'], 'average_value_summary.csv')
     summary_df.to_csv(save_as, index=False)
+
+    diet_suff_df = pandas.DataFrame(diet_sufficiency_summary_dict)
+    save_as = os.path.join(
+        base_data['summary_output_dir'], 'monthly_diet_suff_summary.csv')
+    diet_suff_df.to_csv(save_as, index=False)
+
+    perc_change_df = pandas.DataFrame(perc_change_summary_dict)
+    save_as = os.path.join(
+        base_data['summary_output_dir'], 'perc_change_summary.csv')
+    perc_change_df.to_csv(save_as, index=False)
 
 
 def collect_monthly_values():
@@ -568,22 +588,14 @@ def summarize_Gobi_scenarios():
 
 def summarize_Ahlborn_scenarios():
     # RPM args pertaining to scenario runs at Julian Ahlborn's sites
-    # rearrange output folders
-    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Ahlborn_scenarios/Nov62020"
-    # for aoi_idx in range(1, 16):
-    #     for scenario in ['A', 'B', 'C', 'D', 'F']:
-    #         src_dir = os.path.join(
-    #             outer_dir, scenario, 'aoi_{}'.format(aoi_idx))
-    #         dest_dir = os.path.join(
-    #             outer_dir, 'aoi_{}'.format(aoi_idx), scenario)
-    #         shutil.copytree(src_dir, dest_dir)
-    #         shutil.rmtree(src_dir, ignore_errors=True)
+    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Ahlborn_scenarios/Dec102020"
     base_data = {
         'starting_month': 1,
         'starting_year': 2016,
-        'n_months': 12,
-        'run_list': ['A', 'B', 'C', 'D', 'F', 'G', 'I', 'J', 'L'],
-        'year_list': [2016],  # , 2017],  # years to calculate yearly averages for
+        'n_months': 24,
+        'run_list': [
+            'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'],
+        'year_list': [2017],  # years to calculate yearly averages for
         'output_list': ['standing_biomass', 'diet_sufficiency'],  # outputs to summarize
     }
     summary_outer_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_scenarios"
@@ -739,19 +751,16 @@ def summarize_eastern_steppe_scenarios():
     pixel.
 
     """
-    # current_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current_zerosd/RPM_workspace"
-    # future_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080_zerosd_current_temperature/RPM_workspace"
-    # output_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/RPM_results"
+    current_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current/RPM_workspace"
+    future_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/RPM_workspace"
+    output_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/RPM_results"
 
-    current_dir = "C:/Users/ginge/Desktop/debugging/current/RPM_workspace"
-    future_dir = "C:/Users/ginge/Desktop/debugging/future/RPM_workspace"
-    output_dir = "C:/Users/ginge/Desktop/debugging/tave_instead_of_ctemp"
-
+    year = 2017  # summarize outputs for the second year of scenario conditions
     temp_dir = tempfile.mkdtemp()
-    for output in ['standing_biomass']:  # ['standing_biomass', 'diet_sufficiency']:
+    for output in ['standing_biomass', 'diet_sufficiency']:
         current_raster_list = [
-            os.path.join(current_dir, 'output', '{}_2016_{}.tif'.format(
-                output, m)) for m in range(1, 13)]
+            os.path.join(current_dir, 'output', '{}_{}_{}.tif'.format(
+                output, year, m)) for m in range(1, 13)]
         input_nodata = pygeoprocessing.get_raster_info(
             current_raster_list[0])['nodata'][0]
         current_mean_path = os.path.join(
@@ -760,8 +769,8 @@ def summarize_eastern_steppe_scenarios():
             current_raster_list, input_nodata, current_mean_path, input_nodata)
 
         future_raster_list = [
-            os.path.join(future_dir, 'output', '{}_2016_{}.tif'.format(
-                output, m)) for m in range(1, 13)]
+            os.path.join(future_dir, 'output', '{}_{}_{}.tif'.format(
+                output, year, m)) for m in range(1, 13)]
         future_mean_path = os.path.join(
             temp_dir, 'future_mean_{}.tif'.format(output))
         raster_list_mean(
@@ -769,7 +778,7 @@ def summarize_eastern_steppe_scenarios():
 
         diff_path = os.path.join(
             output_dir,
-            'mean_{}_future_minus_current_CanESM5_ssp370_2061-2080_current_temperature_zerosd.tif'.format(
+            'mean_{}_future_minus_current_CanESM5_ssp370_2061-2080.tif'.format(
                 output))
         raster_difference(
             future_mean_path, input_nodata, current_mean_path, input_nodata,
@@ -797,6 +806,24 @@ def eastern_steppe_time_series():
     sum_df.to_csv(save_as, index=False)
 
 
+def ahlborn_ndvi_time_series():
+    """Make time series of NDVI at Julian's sites."""
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/Julian_Ahlborn/sampling_sites_shapefile/site_centroids.shp"
+    ndvi_pattern = "E:/GIS_local/Mongolia/NDVI/fitted_NDVI_Ahlborn_sites/exported_to_tif/ndvi_{}_{:02}.tif"
+    df_list = []
+    for year in [2014, 2015]:
+        for m in range(1, 13):
+            ndvi_path = ndvi_pattern.format(year, m)
+            points_df = raster_values_at_points(
+                point_shp_path, 'site', ndvi_path, 1, 'ndvi')
+            points_df['year'] = year
+            points_df['month'] = m
+            df_list.append(points_df)
+    ndvi_df = pandas.concat(df_list)
+    save_as = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/biomass_vs_NDVI/ndvi_time_series_ahlborn_sites.csv"
+    ndvi_df.to_csv(save_as, index=False)
+
+
 def main():
     # summarize_Gobi_scenarios()
     # summarize_Ahlborn_sites()
@@ -804,7 +831,8 @@ def main():
     # summarize_Kenya_scenarios()
     # collect_monthly_values()
     # summarize_eastern_steppe_scenarios()
-    eastern_steppe_time_series()
+    # eastern_steppe_time_series()
+    ahlborn_ndvi_time_series()
 
 
 if __name__ == "__main__":
