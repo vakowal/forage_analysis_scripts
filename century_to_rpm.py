@@ -207,7 +207,7 @@ def launch_sites(
         hist_schedule = '{}_hist.sch'.format(site_id)
         hist_output = '{}_hist'.format(site_id)
         write_century_bat(
-            hist_bat, hist_schedule, hist_output, _FIX_FILE, 'outvars.txt')
+            hist_bat, hist_schedule, hist_output, _FIX_FILE, 'outvars_old.txt')  # TODO replace 'outvars.txt')
 
         # write Century batch file for extend simulation
         extend_bat_bn = '{}.bat'.format(site_id)
@@ -216,7 +216,7 @@ def launch_sites(
         output = '{}.lis'.format(site_id)
         extend = '{}_hist'.format(site_id)
         write_century_bat(
-            extend_bat, schedule, output, _FIX_FILE, 'outvars.txt', extend)
+            extend_bat, schedule, output, _FIX_FILE, 'outvars_old.txt', extend)  # TODO replace 'outvars.txt')
 
         # move Century input files to Century dir
         input_files = []
@@ -270,6 +270,48 @@ def century_to_rpm(century_label):
     rp = re.sub(r",", "_", rp)
     rp = re.sub(r"\)", "", rp)
     return rp
+
+
+def century_npp_to_raster(
+        site_csv, shp_id_field, outer_outdir, site_index_path, target_path):
+    """Make a raster of NPP from Century outputs at gridded points.
+
+    Assume we want to calculate average 'cproda' from month 12 in years 2014,
+    2015, and 2016.
+
+    Parameters:
+        site_csv (string): path to a table containing coordinates labels
+            for a series of sites.  Must contain a column, shp_id_field, which
+            is a site label that matches basename of inputs in `input_dir` that
+            may be used to run Century
+        shp_id_field (string): site label, included as a field in `site_csv`
+            and used as basename of Century input files
+        outer_outdir (string): path to a directory containing Century output
+            files. It is expected that this directory contains a separate
+            folder of outputs for each site
+        site_index_path (string): path to raster that indexes sites spatially,
+            indicating which set of Century outputs should apply at each pixel
+            in the raster. E.g., this raster could contain Thiessen polygons
+            corresponding to a set of points where Century has been run
+        target_path (string): path where npp raster should be written
+
+    """
+    site_to_val = {}
+    site_list = pandas.read_csv(site_csv).to_dict(orient='records')
+    for site in site_list:
+        site_id = site[shp_id_field]
+        raster_map_value = site_id
+        century_output_file = os.path.join(
+            outer_outdir, '{}'.format(site_id), '{}.lis'.format(site_id))
+        cent_df = pandas.read_fwf(century_output_file, skiprows=[1])
+        mean_cproda = (cent_df[
+            (cent_df.time == 2015.00) |
+            (cent_df.time == 2016.00) |
+            (cent_df.time == 2017.00)]['cproda']).mean()
+        site_to_val[site_id] = mean_cproda
+    pygeoprocessing.reclassify_raster(
+        (site_index_path, 1), site_to_val, target_path,
+        gdal.GDT_Float32, _SV_NODATA)
 
 
 def century_outputs_to_rpm_initial_rasters(
@@ -814,6 +856,30 @@ def eastern_steppe_initial_tables():
         pft_initial_table)
 
 
+def eastern_steppe_npp():
+    """Run Century and collect "crproda", NPP."""
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/Century_inputs/zerosd"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/Century_outputs/zerosd"
+    launch_sites(site_csv, 'id', input_dir, outer_outdir)
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/site_index.tif"
+    target_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/Century_outputs/zerosd/average_NPP_zerosd.tif"
+    century_npp_to_raster(
+        site_csv, 'id', outer_outdir, site_index_path, target_path)
+
+
+def ahlborn_aoi_npp():
+    """Run Century and collect "cproda", NPP."""
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_halfdegree_grid/Century_outputs"
+    launch_sites(site_csv, 'id', input_dir, outer_outdir)
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/site_index.tif"
+    target_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_halfdegree_grid/Century_outputs/average_NPP_zerosd.tif"
+    century_npp_to_raster(
+        site_csv, 'id', outer_outdir, site_index_path, target_path)
+
+
 def ahlborn_scenario_initial_rasters():
     site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/intermediate_data/soil.csv"
     outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_outputs_Aug2020"
@@ -843,6 +909,20 @@ def laikipia_scenario_initial_rasters():
     site_param_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/site_parameter_table.csv"
     century_params_to_new_model_params(
         pft_param_path, animal_param_path, site_param_path)
+
+
+def laikipia_npp():
+    """Run Century and collect "cproda", NPP."""
+    site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/soil.csv"
+    input_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_inputs"
+    outer_outdir = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_outputs_NPP"
+    # launch_sites(
+        # site_csv, 'id', input_dir, outer_outdir, fix_file='drytrpfi.100')
+    site_index_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/voronoi_polygons_regular_grid.tif"
+    target_path = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/Century_outputs_NPP/average_NPP_zerosd.tif"
+    century_npp_to_raster(
+        site_csv, 'id', outer_outdir, site_index_path, target_path)
+
 
 def OPC_initial_rasters():
     site_csv = "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/OPC_RPM/soil.csv"
@@ -924,7 +1004,10 @@ def main():
     # OPC_initial_rasters()
     # eastern_steppe_regular_grid_initial_rasters()
     # eastern_steppe_regular_grid_future_climate()
-    Century_time_series()
+    # Century_time_series()
+    # laikipia_npp()
+    # eastern_steppe_npp()
+    ahlborn_aoi_npp()
 
 
 if __name__ == "__main__":

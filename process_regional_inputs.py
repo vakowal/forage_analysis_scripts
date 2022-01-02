@@ -474,7 +474,7 @@ def make_sch_files_mongolia(
     for site in site_list:
         save_as = os.path.join(save_dir, '{}.sch'.format(site))
         if site_wth_match_file:
-            wth_stn = match_df.get_value(site, 'name_en')
+            wth_stn = match_df.at[site, 'name_en']
             wth = '{}.wth'.format(wth_stn)
         else:
             wth = None
@@ -1066,7 +1066,7 @@ def worldclim_to_site_file(shp_id_field, wc_precip, wc_temp, site_file_dir):
                     newfile.write(line)
                     line = old_file.readline()
                 for m in range(1, 13):
-                    item = prec_subs.get_value(m, 'prec')
+                    item = prec_subs.at[m, 'prec']
                     newline = '{:<8.5f}          \'PRECIP({})\'\n'.format(item,
                                                                           m)
                     newfile.write(newline)
@@ -1077,12 +1077,12 @@ def worldclim_to_site_file(shp_id_field, wc_precip, wc_temp, site_file_dir):
                 while 'TMN2M(1)' not in line:
                     line = old_file.readline()
                 for m in range(1, 13):
-                    item = temp_subs.get_value(m, 'tmin')
+                    item = temp_subs.at[m, 'tmin']
                     newline = '{:<8.5f}          \'TMN2M({})\'\n'.format(item,
                                                                          m)
                     newfile.write(newline)
                 for m in range(1, 13):
-                    item = temp_subs.get_value(m, 'tmax')
+                    item = temp_subs.at[m, 'tmax']
                     newline = '{:<8.5f}          \'TMX2M({})\'\n'.format(item,
                                                                          m)
                     newfile.write(newline)
@@ -1134,17 +1134,17 @@ def EO_to_wth(soil_table, EO_csv, year_reg, col_format, wc_temp, wc_prec,
                     prec = prec * conversion_factor
                 except KeyError:
                     # EO data doesn't contain this month, fill with Worldclim
-                    prec = prec_subs.get_value(mon, 'prec')
+                    prec = prec_subs.at[mon, 'prec']
                 trans_dict[mon].append(prec)
             trans_dict['year'].append(int(year))
             trans_dict['label'].append('tmin')
             for mon in range(1, 13):
-                tmin = temp_subs.get_value(mon, 'tmin')
+                tmin = temp_subs.at[mon, 'tmin']
                 trans_dict[mon].append(tmin)
             trans_dict['year'].append(int(year))
             trans_dict['label'].append('tmax')
             for mon in range(1, 13):
-                tmax = temp_subs.get_value(mon, 'tmax')
+                tmax = temp_subs.at[mon, 'tmax']
                 trans_dict[mon].append(tmax)
         df = pandas.DataFrame(trans_dict)
         cols = df.columns.tolist()
@@ -1885,7 +1885,7 @@ def generate_worldclim_precip_table_at_points(
     precip_df_list = []
     for month in range(1, 13):
         precip_path = precip_pattern.replace(
-            '<month>', '{}'.format(month))
+            '<month>', '{:02}'.format(month))
         precip_df = raster_values_at_points(
             point_shp_path, precip_path, 1, shp_id_field, 'precip_raw')
         precip_df['prec'] = precip_df['precip_raw'] * float(multiply_factor)
@@ -2043,6 +2043,47 @@ def eastern_steppe_time_series_points():
     #     1, inputs_dir)
 
 
+def ahlborn_regular_grid_workflow():
+    """Generate Century inputs for regular grid in Ahlborn aoi.
+
+    For comparison of ANPP from Century (no grazing) against ORCHIDEE, which is
+    at half degree resolution.
+
+    """
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/halfdegree_grid_single.shp"
+    wc_temp_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/worldclim_temperature.csv"
+    # generate_worldclim_temperature_table(
+    #     point_shp_path, 'id',
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min/wc2.0_30s_tmin_<month>.tif",
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max/wc2.0_30s_tmax_<month>.tif",
+    #     wc_temp_table)
+    wc_point_precip_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/worldclim_precip.csv"
+    # generate_worldclim_precip_table_at_points(
+    #     point_shp_path, 'id',
+    #     "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip/wc2.0_30s_prec_<month>.tif",
+    #     0.1, wc_point_precip_table)
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/soil.csv"
+    generate_soil_table(
+        point_shp_path, 'id',
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/BLDFIE_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/CLYPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SNDPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/SLTPPT_M_sl3_1km_ll.tif",
+        "E:/GIS_local_archive/General_useful_data/soilgrids1k/PHIHOX_M_sl3_1km_ll.tif",
+        soil_table)
+    template_100 = "C:/Users/ginge/Dropbox/natCap_backup/Mongolia/model_inputs/template_files/historical_schedule_reduced_N25.100"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/Ahlborn_sites/Century_halfdegree_grid/Century_inputs"
+    if not os.path.exists(inputs_dir):
+        os.makedirs(inputs_dir)
+    write_site_files_mongolia(template_100, soil_table, 'id', inputs_dir)
+    worldclim_to_site_file(
+        'id', wc_point_precip_table, wc_temp_table, inputs_dir)
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_zerosd_3years.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+
+
 def eastern_steppe_regular_grid_workflow():
     """Generate Century inputs for regular grid across eastern steppe."""
     point_shp_path = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/southeastern_aimags_1degree_grid.shp"
@@ -2075,6 +2116,16 @@ def eastern_steppe_regular_grid_workflow():
         'id', wc_point_precip_table, wc_temp_table, inputs_dir)
     template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
     template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule.sch"
+    make_sch_files_mongolia(
+        soil_table, 'id', template_hist, template_sch, inputs_dir)
+
+
+def eastern_steppe_zerosd():
+    """Write schedule files that include no grazing."""
+    soil_table = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/soil.csv"
+    template_hist = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_hist.sch"
+    template_sch = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/template_files/historical_schedule_zerosd_3years.sch"
+    inputs_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/Century_inputs/zerosd"
     make_sch_files_mongolia(
         soil_table, 'id', template_hist, template_sch, inputs_dir)
 
@@ -2159,4 +2210,6 @@ if __name__ == "__main__":
     # laikipia_regular_grid_workflow()
     # OPC_regular_grid_workflow()
     # eastern_steppe_regular_grid_workflow()
-    eastern_steppe_time_series_points()
+    # eastern_steppe_time_series_points()
+    # eastern_steppe_zerosd()
+    ahlborn_regular_grid_workflow()

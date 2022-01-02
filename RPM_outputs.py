@@ -742,6 +742,39 @@ def raster_difference(
             target_nodata)
 
 
+def eastern_steppe_cumulative_rasters():
+    """Calculate cumulative biomass and diet sufficiency for e.s. scenarios.
+
+    Growing season: months 4 through 9
+
+    """
+    current_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current/RPM_workspace"
+    future_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/RPM_workspace"
+    output_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/RPM_results"
+
+    year = 2017  # summarize outputs for the second year of scenario conditions
+    for output in ['standing_biomass', 'diet_sufficiency']:
+        current_raster_list = [
+            os.path.join(current_dir, 'output', '{}_{}_{}.tif'.format(
+                output, year, m)) for m in range(4, 10)]
+        input_nodata = pygeoprocessing.get_raster_info(
+            current_raster_list[0])['nodata'][0]
+        current_sum_path = os.path.join(
+            output_dir, 'current_sum_{}_months4-9.tif'.format(output))
+        raster_list_sum(
+            current_raster_list, input_nodata, current_sum_path, input_nodata,
+            nodata_remove=True)
+
+        future_raster_list = [
+            os.path.join(future_dir, 'output', '{}_{}_{}.tif'.format(
+                output, year, m)) for m in range(4, 10)]
+        future_sum_path = os.path.join(
+            output_dir, 'future_sum_{}_months4-9.tif'.format(output))
+        raster_list_sum(
+            future_raster_list, input_nodata, future_sum_path, input_nodata,
+            nodata_remove=True)
+
+
 def summarize_eastern_steppe_scenarios():
     """Calculate difference in mean standing biomass and diet sufficiency.
 
@@ -751,6 +784,19 @@ def summarize_eastern_steppe_scenarios():
     pixel.
 
     """
+    def perc_change(baseline_ar, scenario_ar):
+        """Calculate percent change from baseline."""
+        valid_mask = (
+            (~numpy.isclose(baseline_ar, input_nodata)) &
+            (~numpy.isclose(scenario_ar, input_nodata)) &
+            (baseline_ar != 0))
+        result = numpy.empty(baseline_ar.shape, dtype=numpy.float32)
+        result[:] = input_nodata
+        result[valid_mask] = (
+            (scenario_ar[valid_mask] - baseline_ar[valid_mask]) /
+            baseline_ar[valid_mask] * 100)
+        return result
+
     current_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current/RPM_workspace"
     future_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/RPM_workspace"
     output_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/RPM_results"
@@ -764,15 +810,17 @@ def summarize_eastern_steppe_scenarios():
         input_nodata = pygeoprocessing.get_raster_info(
             current_raster_list[0])['nodata'][0]
         current_mean_path = os.path.join(
-            temp_dir, 'current_mean_{}.tif'.format(output))
-        raster_list_mean(
-            current_raster_list, input_nodata, current_mean_path, input_nodata)
+            output_dir, 'current_mean_{}.tif'.format(output))
+        if not os.path.isfile(current_mean_path):
+            raster_list_mean(
+                current_raster_list, input_nodata, current_mean_path,
+                input_nodata)
 
         future_raster_list = [
             os.path.join(future_dir, 'output', '{}_{}_{}.tif'.format(
                 output, year, m)) for m in range(1, 13)]
         future_mean_path = os.path.join(
-            temp_dir, 'future_mean_{}.tif'.format(output))
+            output_dir, 'future_mean_{}.tif'.format(output))
         raster_list_mean(
             future_raster_list, input_nodata, future_mean_path, input_nodata)
 
@@ -780,9 +828,21 @@ def summarize_eastern_steppe_scenarios():
             output_dir,
             'mean_{}_future_minus_current_CanESM5_ssp370_2061-2080.tif'.format(
                 output))
-        raster_difference(
-            future_mean_path, input_nodata, current_mean_path, input_nodata,
-            diff_path, input_nodata)
+        if not os.path.isfile(diff_path):
+            raster_difference(
+                future_mean_path, input_nodata, current_mean_path,
+                input_nodata, diff_path, input_nodata)
+
+        # percent change
+        perc_change_path = os.path.join(
+            output_dir,
+            'perc_change_mean_{}_future_minus_current_CanESM5_ssp370_2061-2080.tif'.format(
+                output))
+        if not os.path.isfile(perc_change_path):
+            pygeoprocessing.raster_calculator(
+                [(path, 1) for path in [current_mean_path, future_mean_path]],
+                perc_change, perc_change_path, gdal.GDT_Float32,
+                input_nodata)
 
     shutil.rmtree(temp_dir)
 
@@ -824,6 +884,148 @@ def ahlborn_ndvi_time_series():
     ndvi_df.to_csv(save_as, index=False)
 
 
+def eastern_steppe_npp_at_points():
+    """Make a table of NPP from Century and ORCHIDEE at points."""
+    point_shp_path = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/southeastern_aimags_1degree_grid.shp"
+    century_npp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/eastern_steppe_regular_grid/Century_outputs/zerosd/average_NPP_zerosd.tif"
+    century_npp_table = raster_values_at_points(
+        point_shp_path, 'id', century_npp_path, 1, 'century_anpp')
+    orchidee_npp_path = "F:/NCI_NDR/Data meat production/ORCHIDEE/ORCHIDEE-GMv3.1_ANPP_halfdeg_GI_0000_N000_annual_average.tif"
+    orchidee_npp_table = raster_values_at_points(
+        point_shp_path, 'id', orchidee_npp_path, 1, 'orchidee_anpp')
+    npp_table = pandas.merge(century_npp_table, orchidee_npp_table, on='id')
+    npp_table.to_csv(
+        "F:/NCI_NDR/Data meat production/ORCHIDEE/comparisons_with_Century_RPM/Mongolia_ANPP_ORCHIDEE_Century.csv")
+
+
+def ahlborn_npp_at_points():
+    """Make a table of NPP from Century and ORCHIDEE at Julian's sites."""
+    point_shp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/data/Julian_Ahlborn/sampling_sites_shapefile/site_centroids.shp"
+    century_npp_path = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_results/Ahlborn_sites/Century_halfdegree_grid/Century_outputs/average_NPP_zerosd.tif"
+    century_npp_table = raster_values_at_points(
+        point_shp_path, 'site', century_npp_path, 1, 'century_anpp')
+    orchidee_npp_path = "F:/NCI_NDR/Data meat production/ORCHIDEE/ORCHIDEE-GMv3.1_ANPP_halfdeg_GI_0000_N000_annual_average.tif"
+    orchidee_npp_table = raster_values_at_points(
+        point_shp_path, 'site', orchidee_npp_path, 1, 'orchidee_anpp')
+    npp_table = pandas.merge(century_npp_table, orchidee_npp_table, on='site')
+    npp_table.to_csv(
+        "F:/NCI_NDR/Data meat production/ORCHIDEE/comparisons_with_Century_RPM/Ahlborn_sites_ANPP_ORCHIDEE_Century.csv")
+
+
+def wind_erosion_inputs():
+    """Collect inputs for wind erosion model from RPM inputs and outputs.
+
+    For current and future scenarios for the Eastern Steppe.
+    """
+    def calc_cover_from_biomass(biomass):
+        """Calculate percent cover from biomass using empirical regression."""
+        valid_mask = (~numpy.isclose(biomass, biomass_nodata))
+        result = numpy.empty(biomass.shape, dtype=numpy.float32)
+        result[:] = biomass_nodata
+        result[valid_mask] = biomass[valid_mask] * 0.0693 + 12.83
+        return result
+
+    eastern_steppe_dir = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop"
+
+    # where data outputs for wind erosion should be stored
+    local_dir = "C:/Eastern_steppe_wind_erosion_scenarios"
+
+    # inputs that do not differ by scenario
+    # soil_dest_dir = os.path.join(local_dir, 'soil')
+    # if not os.path.exists(soil_dest_dir):
+    #     os.makedirs(soil_dest_dir)
+    # shutil.copyfile(
+    #     os.path.join(eastern_steppe_dir, 'soil', 'clay.tif'),
+    #     os.path.join(soil_dest_dir, 'clay.tif'))
+    # shutil.copyfile(
+    #     os.path.join(eastern_steppe_dir, 'soil', 'clay.tif'),
+    #     os.path.join(soil_dest_dir, 'silt.tif'))
+    # shutil.copyfile(
+    #     os.path.join(eastern_steppe_dir, 'soil', 'clay.tif'),
+    #     os.path.join(soil_dest_dir, 'sand.tif'))
+
+    # # calculate organic matter as the sum of state variables in initial conditions rasters
+    # initial_conditions_dir = "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/initial_conditions"
+    # som_list = [
+    #     os.path.join(initial_conditions_dir, 'som1c_1.tif'),
+    #     os.path.join(initial_conditions_dir, 'som1c_2.tif'),
+    #     os.path.join(initial_conditions_dir, 'som2c_1.tif'),
+    #     os.path.join(initial_conditions_dir, 'som2c_2.tif'),
+    #     os.path.join(initial_conditions_dir, 'som3c.tif')]
+    # organic_matter_dest = os.path.join(soil_dest_dir, 'organic_matter.tif')
+    # input_nodata = pygeoprocessing.get_raster_info(som_list[0])['nodata'][0]
+    # raster_list_sum(som_list, input_nodata, organic_matter_dest, input_nodata)
+
+    # differ by scenario
+    scenario_dict = {
+        'current': {
+            'min_temp_pattern': "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min/wc2.0_30s_tmin_{}.tif",
+            'max_temp_pattern': "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max/wc2.0_30s_tmax_{}.tif",
+            'precip_dir': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current/precip",
+            'output_dir': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current/RPM_workspace/output",
+        },
+        'future': {
+            'min_temp_pattern': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/tmin/tmin_2016_{}.tif",
+            'max_temp_pattern': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/tmax/tmax_2016_{}.tif",
+            'precip_dir': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/precip",
+            'output_dir': "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/CanESM5_ssp370_2061-2080/RPM_workspace/output",
+        }
+    }
+
+    for scenario in scenario_dict:
+        scenario_dest_dir = os.path.join(local_dir, scenario)
+        if not os.path.exists(scenario_dest_dir):
+            os.makedirs(scenario_dest_dir)
+
+        # monthly average temperature
+        temperature_dest_dir = os.path.join(scenario_dest_dir, 'temperature')
+        if not os.path.exists(temperature_dest_dir):
+            os.makedirs(temperature_dest_dir)
+        for m in range(1, 13):
+            tmin_path = os.path.join(
+                scenario_dict[scenario]['min_temp_pattern'].format(m))
+            tmax_path = os.path.join(
+                scenario_dict[scenario]['max_temp_pattern'].format(m))
+            destination_path = os.path.join(
+                temperature_dest_dir, 'temperature_ave_{}.tif'.format(m))
+            temperature_nodata = pygeoprocessing.get_raster_info(
+                tmin_path)['nodata'][0]
+            tmax_nodata = pygeoprocessing.get_raster_info(
+                tmax_path)['nodata'][0]
+            if (temperature_nodata != tmax_nodata):
+                raise ValueError("Temperature data have >1 nodata value")
+            raster_list_mean(
+                [tmin_path, tmax_path], temperature_nodata, destination_path,
+                temperature_nodata)
+
+        # monthly precip
+        precip_dest_dir = os.path.join(scenario_dest_dir, 'precip')
+        if not os.path.exists(precip_dest_dir):
+            os.makedirs(precip_dest_dir)
+        for m in range(1, 13):
+            input_path = os.path.join(
+                scenario_dict[scenario]['precip_dir'],
+                'precip_2017_{}.tif'.format(m))
+            dest_path = os.path.join(
+                precip_dest_dir, 'precip_{}.tif'.format(m))
+            shutil.copyfile(input_path, dest_path)
+
+        # monthly veg cover
+        veg_dest_dir = os.path.join(scenario_dest_dir, 'veg_cover')
+        if not os.path.exists(veg_dest_dir):
+            os.makedirs(veg_dest_dir)
+        for m in range(1, 13):
+            biomass_path = os.path.join(
+                scenario_dict[scenario]['output_dir'],
+                'standing_biomass_2017_{}.tif'.format(m))
+            cover_path = os.path.join(veg_dest_dir, 'cover_{}.tif'.format(m))
+            biomass_nodata = pygeoprocessing.get_raster_info(
+                biomass_path)['nodata'][0]
+            pygeoprocessing.raster_calculator(
+                [(biomass_path, 1)], calc_cover_from_biomass,
+                cover_path, gdal.GDT_Float32, biomass_nodata)
+
+
 def main():
     # summarize_Gobi_scenarios()
     # summarize_Ahlborn_sites()
@@ -832,7 +1034,11 @@ def main():
     # collect_monthly_values()
     # summarize_eastern_steppe_scenarios()
     # eastern_steppe_time_series()
-    ahlborn_ndvi_time_series()
+    # ahlborn_ndvi_time_series()
+    # eastern_steppe_cumulative_rasters()
+    # eastern_steppe_npp_at_points()
+    # ahlborn_npp_at_points()
+    wind_erosion_inputs()
 
 
 if __name__ == "__main__":

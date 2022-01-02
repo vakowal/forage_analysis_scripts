@@ -252,6 +252,119 @@ def map_FID_to_field(shp_path, field):
     return FID_to_field
 
 
+def raster_list_sum(
+        raster_list, input_nodata, target_path, target_nodata,
+        nodata_remove=False):
+    """Calculate the sum per pixel across rasters in a list.
+
+    Sum the rasters in `raster_list` element-wise, allowing nodata values
+    in the rasters to propagate to the result or treating nodata as zero. If
+    nodata is treated as zero, areas where all inputs are nodata will be nodata
+    in the output.
+
+    Parameters:
+        raster_list (list): list of paths to rasters to sum
+        input_nodata (float or int): nodata value in the input rasters
+        target_path (string): path to location to store the result
+        target_nodata (float or int): nodata value for the result raster
+        nodata_remove (bool): if true, treat nodata values in input
+            rasters as zero. If false, the sum in a pixel where any input
+            raster is nodata is nodata.
+
+    Side effects:
+        modifies or creates the raster indicated by `target_path`
+
+    Returns:
+        None
+
+    """
+    def raster_sum_op(*raster_list):
+        """Add the rasters in raster_list without removing nodata values."""
+        invalid_mask = numpy.any(
+            numpy.isclose(numpy.array(raster_list), input_nodata), axis=0)
+        for r in raster_list:
+            numpy.place(r, numpy.isclose(r, input_nodata), [0])
+        sum_of_rasters = numpy.sum(raster_list, axis=0)
+        sum_of_rasters[invalid_mask] = target_nodata
+        return sum_of_rasters
+
+    def raster_sum_op_nodata_remove(*raster_list):
+        """Add the rasters in raster_list, treating nodata as zero."""
+        invalid_mask = numpy.all(
+            numpy.isclose(numpy.array(raster_list), input_nodata), axis=0)
+        for r in raster_list:
+            numpy.place(r, numpy.isclose(r, input_nodata), [0])
+        sum_of_rasters = numpy.sum(raster_list, axis=0)
+        sum_of_rasters[invalid_mask] = target_nodata
+        return sum_of_rasters
+
+    if nodata_remove:
+        pygeoprocessing.raster_calculator(
+            [(path, 1) for path in raster_list], raster_sum_op_nodata_remove,
+            target_path, gdal.GDT_Float32, target_nodata)
+
+    else:
+        pygeoprocessing.raster_calculator(
+            [(path, 1) for path in raster_list], raster_sum_op,
+            target_path, gdal.GDT_Float32, target_nodata)
+
+
+def raster_difference(
+        raster1, raster1_nodata, raster2, raster2_nodata, target_path,
+        target_nodata, nodata_remove=False):
+    """Subtract raster2 from raster1.
+
+    Subtract raster2 from raster1 element-wise, allowing nodata values in the
+    rasters to propagate to the result or treating nodata as zero.
+
+    Parameters:
+        raster1 (string): path to raster from which to subtract raster2
+        raster1_nodata (float or int): nodata value in raster1
+        raster2 (string): path to raster which should be subtracted from
+            raster1
+        raster2_nodata (float or int): nodata value in raster2
+        target_path (string): path to location to store the difference
+        target_nodata (float or int): nodata value for the result raster
+        nodata_remove (bool): if true, treat nodata values in input
+            rasters as zero. If false, the difference in a pixel where any
+            input raster is nodata is nodata.
+
+    Side effects:
+        modifies or creates the raster indicated by `target_path`
+
+    Returns:
+        None
+
+    """
+    def raster_difference_op(raster1, raster2):
+        """Subtract raster2 from raster1 without removing nodata values."""
+        valid_mask = (
+            (~numpy.isclose(raster1, raster1_nodata)) &
+            (~numpy.isclose(raster2, raster2_nodata)))
+        result = numpy.empty(raster1.shape, dtype=numpy.float32)
+        result[:] = target_nodata
+        result[valid_mask] = raster1[valid_mask] - raster2[valid_mask]
+        return result
+
+    def raster_difference_op_nodata_remove(raster1, raster2):
+        """Subtract raster2 from raster1, treating nodata as zero."""
+        numpy.place(raster1, numpy.isclose(raster1, raster1_nodata), [0])
+        numpy.place(raster2, numpy.isclose(raster2, raster2_nodata), [0])
+        result = raster1 - raster2
+        return result
+
+    if nodata_remove:
+        pygeoprocessing.raster_calculator(
+            [(path, 1) for path in [raster1, raster2]],
+            raster_difference_op_nodata_remove, target_path, gdal.GDT_Float32,
+            target_nodata)
+    else:
+        pygeoprocessing.raster_calculator(
+            [(path, 1) for path in [raster1, raster2]],
+            raster_difference_op, target_path, gdal.GDT_Float32,
+            target_nodata)
+
+
 def raster_values_at_points(
         point_shp_path, shp_id_field, raster_path, band, raster_field_name):
     """Collect values from a raster intersecting points in a shapefile.
@@ -1382,6 +1495,92 @@ def Laikipia_scenarios():
             forage.execute(rpm_args)
 
 
+def Laikipia_GLW():
+    """Run with GLW as animal density input to compare to NCI layers."""
+    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current"
+    aoi_path = "E:/GIS_local_archive/Kenya_ticks/Kenya_forage/Laikipia.shp"
+
+    worldclim_precip_dir = "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip"
+    baseline_precip_dir = os.path.join(outer_dir, 'precip')
+    if not os.path.exists(baseline_precip_dir):
+        os.makedirs(baseline_precip_dir)
+
+    # multiplier to convert Worldclim precip (mm) to cm
+    precip_multiplier = 0.1
+    for m in range(1, 13):
+        input_precip_path = os.path.join(
+            worldclim_precip_dir, 'wc2.0_30s_prec_{:02}.tif'.format(m))
+        baseline_precip_path = os.path.join(
+            baseline_precip_dir, 'precip_2016_{}.tif'.format(m))
+        mask_and_perturb(
+            (input_precip_path, 1), aoi_path, baseline_precip_path,
+            multiplier=precip_multiplier)
+        shutil.copyfile(
+            baseline_precip_path,
+            os.path.join(baseline_precip_dir, 'precip_2017_{}.tif'.format(m)))
+
+    rpm_args = {
+        'results_suffix': "",
+        'starting_month': 1,
+        'starting_year': 2016,
+        'n_months': 24,
+        'aoi_path': aoi_path,
+        'management_threshold': 300,
+        'proportion_legume_path': os.path.join(
+            LAIKIPIA_DATA_DIR, 'prop_legume.tif'),
+        'bulk_density_path': os.path.join(
+            GLOBAL_SOIL_DIR, "bldfie_m_sl3_1km_ll.tif"),
+        'ph_path': os.path.join(
+            GLOBAL_SOIL_DIR, 'phihox_m_sl3_1km_ll.tif'),
+        'clay_proportion_path': os.path.join(
+            GLOBAL_SOIL_DIR, 'clyppt_m_sl3_1m_ll.tif'),
+        'silt_proportion_path': os.path.join(
+            GLOBAL_SOIL_DIR, 'sltppt_m_sl3_1m_ll.tif'),
+        'sand_proportion_path': os.path.join(
+            GLOBAL_SOIL_DIR, 'sndppt_m_sl3_1m_ll.tif'),
+        'precip_dir': baseline_precip_dir,
+        'monthly_precip_path_pattern': "E:/GIS_local/Mongolia/CHIRPS/div_by_10/chirps-v2.0.<year>.<month>.tif",
+        'min_temp_dir': "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_min",
+        'max_temp_dir': "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/temperature_max",
+        'site_param_table': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/site_parameter_table.csv",
+        'site_param_spatial_index_path': os.path.join(
+            LAIKIPIA_DATA_DIR, 'site_index.tif'),
+        'veg_trait_path': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/pft_parameter_table.csv",
+        'veg_spatial_composition_path_pattern': os.path.join(
+            LAIKIPIA_DATA_DIR, 'pft_<PFT>.tif'),
+        'animal_trait_path': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/animal_parameter_table.csv",
+        'initial_conditions_dir': "C:/Users/ginge/Dropbox/NatCap_backup/Forage_model/Forage_model/model_inputs/Laikipia_RPM/RPM_inputs/initial_conditions",
+        'animal_density': "F:/NCI_NDR/Data GLW/5_Ct_2010_Da.tif",  # GLW cattle raster
+        'crude_protein': CRUDE_PROTEIN,
+    }
+    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Kenya/RPM_GLW"
+    workspace_dir = os.path.join(outer_dir, 'current')
+    if not os.path.exists(workspace_dir):
+        os.makedirs(workspace_dir)
+        rpm_args['workspace_dir'] = workspace_dir
+        forage.execute(rpm_args)
+
+    # calculate annual biomass removed by animals
+    processing_dir = tempfile.mkdtemp()
+    diff_list = []
+    target_nodata = -1.0
+    for m in range(1, 13):
+        potential_path = os.path.join(
+            workspace_dir, 'output', 'potential_biomass_2017_{}.tif'.format(m))
+        standing_path = os.path.join(
+            workspace_dir, 'output', 'standing_biomass_2017_{}.tif'.format(m))
+        diff_path = os.path.join(processing_dir, 'consumed_{}.tif'.format(m))
+        raster_difference(
+            potential_path, target_nodata, standing_path, target_nodata,
+            diff_path, target_nodata)
+        diff_list.append(diff_path)
+
+    sum_consumed_path = os.path.join(
+        workspace_dir, 'annual_kg_consumed_2017.tif')
+    raster_list_sum(
+        diff_list, target_nodata, sum_consumed_path, target_nodata)
+
+
 def mask_and_divide(
         base_raster_path_band, mask_vector_path, target_mask_raster_path,
         multiplier=None, all_touched=False):
@@ -1457,7 +1656,8 @@ def mask_and_divide(
 def eastern_steppe_future_climate():
     """Run RPM with real future climate and 2018 animal densities."""
     cmip6_model = 'CanESM5'  # 'GFDL-ESM4'
-    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/{}_ssp370_2061-2080".format(cmip6_model)
+    # outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/{}_ssp370_2061-2080".format(cmip6_model)
+    outer_dir = "C:/RPM_for_wind_erosion/future"  # TODO remove me
     workspace_dir = os.path.join(outer_dir, 'RPM_workspace')
     if not os.path.exists(workspace_dir):
         os.makedirs(workspace_dir)
@@ -1501,7 +1701,7 @@ def eastern_steppe_future_climate():
         'results_suffix': "",
         'starting_month': 1,
         'starting_year': 2016,
-        'n_months': 24,
+        'n_months': 12,  # 24  TODO change back to 24!!
         'aoi_path': aoi_path,
         'management_threshold': 100,
         'proportion_legume_path': os.path.join(
@@ -1534,6 +1734,7 @@ def eastern_steppe_future_climate():
         'initial_conditions_dir': "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/initial_conditions",
         'animal_density': "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/sfu_per_ha_NSO_2018.tif",
         'crude_protein': CRUDE_PROTEIN,
+        'save_sv_rasters': True,
     }
     forage.execute(rpm_args)
 
@@ -1545,7 +1746,8 @@ def eastern_steppe_future_climate():
 
 def eastern_steppe_current_climate():
     """Run eastern steppe aoi with current worldclim."""
-    outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current"
+    # outer_dir = "C:/Users/ginge/Documents/NatCap/GIS_local/Mongolia/Eastern_steppe_scenarios/current"
+    outer_dir = "C:/RPM_for_wind_erosion/current"  # TODO remove me!
     aoi_path = "E:/GIS_local/Mongolia/WCS_Eastern_Steppe_workshop/southeastern_aimags_aoi_WGS84.shp"
 
     worldclim_precip_dir = "E:/GIS_local_archive/General_useful_data/Worldclim_2.0/worldclim_precip"
@@ -1608,6 +1810,7 @@ def eastern_steppe_current_climate():
         'initial_conditions_dir': "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/initial_conditions",
         'animal_density': "C:/Users/ginge/Dropbox/NatCap_backup/Mongolia/model_inputs/eastern_steppe_regular_grid/RPM_inputs/sfu_per_ha_NSO_2018.tif",
         'crude_protein': CRUDE_PROTEIN,
+        'save_sv_rasters': True,
     }
     forage.execute(rpm_args)
 
@@ -1631,9 +1834,10 @@ def main():
     # Laikipia_NDVI_test()
     # launch_RPM_OPC()
     # Ahlborn_zerosd_biomass_vs_Century()
-    # eastern_steppe_future_climate()
+    eastern_steppe_future_climate()
     # eastern_steppe_current_climate()
-    mask_annual_precip()
+    # mask_annual_precip()
+    # Laikipia_GLW()
 
 
 if __name__ == "__main__":
